@@ -17,7 +17,7 @@ class RNN():
         # zero state
         self.reset_state()
 
-        # construct computational graph
+        # build computational graph
         self.__build__()
 
         # initialize session
