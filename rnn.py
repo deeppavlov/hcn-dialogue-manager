@@ -10,12 +10,11 @@ from tensorflow.contrib.layers import xavier_initializer
 class RNN():
 
     def __init__(self, obs_size, n_hidden=128, action_size=16):
-
         self.obs_size = obs_size
         self.n_hidden = n_hidden
         self.action_size = action_size
 
-        # zero init state
+        # zero state
         self.reset_state()
 
         # construct computational graph
@@ -26,14 +25,13 @@ class RNN():
         self.sess.run(tf.global_variables_initializer())
 
     def __build__(self):
-
         tf.reset_default_graph()
 
         # entry points
         self._features = tf.placeholder(tf.float32, [1, self.obs_size], 
                 name='features')
-        self._init_state = ( tf.placeholder(tf.float32, [1, self.n_hidden]) 
-                for _ in range(2) )
+        self._state_c = tf.placeholder(tf.float32, [1, self.n_hidden]) 
+        self._state_h = tf.placeholder(tf.float32, [1, self.n_hidden]) 
         self._action = tf.placeholder(tf.int32, 
                 name='ground_truth_action')
         self._action_mask = tf.placeholder(tf.float32, [self.action_size], 
@@ -51,7 +49,7 @@ class RNN():
         lstm_f = tf.contrib.rnn.LSTMCell(self.n_hidden, state_is_tuple=True)
 
         lstm_op, self.state = lstm_f(inputs=projected_features, 
-                state=self._init_state)
+                state=(self._state_c, self._state_h))
 
         # reshape LSTM's state tuple (2,128) -> (1,256)
         state_reshaped = tf.concat(axis=1, values=(self.state.c, self.state.h))
@@ -76,12 +74,34 @@ class RNN():
         self.train_op = tf.train.AdadeltaOptimizer(0.1).minimize(self.loss)
 
     def reset_state(self):
-        # zero init state
-        self.init_state = ( np.zeros([1,self.nb_hidden], dtype=np.float32)
-                for _ in range(2) )
+        # set zero state
+        self.state_c = np.zeros([1,self.nb_hidden], dtype=np.float32)
+        self.state_h = np.zeros([1,self.nb_hidden], dtype=np.float32)
+
+    def train_step(self, features, action, action_mask):
+        _, loss_value, self.state_c, self.state_h = self.sess.run(
+                [self.train_op, self.loss, self.state.c, self.state.h],
+                feed_dict={
+                    self._features: features.reshape([1, self.obs_size]),
+                    self._action: [action],
+                    self._state_c: self.state_c,
+                    self._state_h: self.state_h,
+                    self._action_mask: action_mask
+                    })
+        return loss_value
+
+    def forward(self, features, action_mask):
+        probs, prediction, self.state_c, self.state_h = self.sess.run(
+                [self.probs, self.prediction, self.state.c, self.state.h],
+                feed_dict={
+                    self._features: features.reshape([1, self.obs_size]),
+                    self._state_c: self.state_c,
+                    self._state_h: self.state_h,
+                    seld._action_mask: action_mask
+                    })
+        return probs, prediction
 
     def load(self, fname='hcn.ckpt'):
-
         fpath = 'ckpt/{}'.format(fname)
         ckpt = tf.train.get_checkpoint_state('ckpt', fname)
 
@@ -93,7 +113,6 @@ class RNN():
             sys.stderr.write("<ERR> checkpoint '{}' not found.\n".format(fpath))
 
     def save(self, fname='hcn.ckpt'):
-
         saver = tf.train.Saver()
         saver.save(self.sess, fpath, global_step=0)
         sys.stderr.write("save to {}\n".format(fpath))
