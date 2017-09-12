@@ -14,6 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import os
+import json
 import sys
 import copy
 import numpy as np
@@ -27,22 +29,22 @@ class HybridCodeNetworkModel(object):
     def __init__(self, opt):
         self.opt = copy.deepcopy(opt)
 
-        # initialize parameters
-        self.__init_params__()
         # initialize session
         self._sess = tf.Session()
         # initialize metric variables
         self.reset_metrics()
 
         if self.opt.get('pretrained_model'):
-            # restore state and session
+            # restore state, parameters and session
             self.restore()
         else:
             sys.stderr.write("<INFO> Initializing model from scratch.\n")
-            # zero state
-            self.reset_state()
+            # initialize parameters
+            self.__init_params__()
             # build computational graph
             self.__build__()
+            # zero state
+            self.reset_state()
             # initialize variables
             self._sess.run(tf.global_variables_initializer())
 
@@ -153,9 +155,10 @@ class HybridCodeNetworkModel(object):
         return probs, prediction
 
     def restore(self, fname=None):
-# TODO: restore hidden states
+        """Restores graph, important operations and state"""
         fname = fname or self.opt['pretrained_model']
-        fpath, meta_fpath = "ckpt/{}".format(fname), "ckpt/{}.meta".format(fname)
+        fpath = "ckpt/{}".format(fname)
+        json_fpath, meta_fpath = "{}.json".format(fpath), "{}.meta".format(fpath)
         _ckpt = tf.train.get_checkpoint_state('ckpt', fname)
 
         if _ckpt:
@@ -179,16 +182,35 @@ class HybridCodeNetworkModel(object):
             self._prediction = _graph.get_collection('prediction')[0]
             self._loss = _graph.get_collection('loss')[0]
             self._train_op = _graph.get_collection('train_op')[0]
+
+            # restore state
+            if os.path.isfile(json_fpath):
+                with open(json_fpath, 'r') as f:
+                    params, (self.state_c, self.state_h) = json.load(f)
+                    self._init_params(params)
+            else:
+                sys.stderr.write("<ERR>'{}' not found\n".format(json_fpath))
+                exit()
         else:
             sys.stderr.write("<ERR> checkpoint '{}' not found\n".format(fpath))
+            exit()
 
     def save(self, fname='hcn'):
-# TODO: save hidden states
+        """Stores 
+            - graph in <fname>.meta
+            - parameters and state in <fname>.json
+        """
         fpath = "ckpt/{}".format(fname) 
         
+        # save graph
         sys.stderr.write("<INFO> saving to '{}-{}.meta'\n".format(fpath, self.step))
         _saver = tf.train.Saver()
         _saver.save(self._sess, fpath, global_step=self.step)
+        
+        # save state and options
+        sys.stderr.write("<INFO> saving to '{}-{}.json'\n".format(fpath, self.step))
+        with open("{}-{}.json".format(fpath, self.step), 'w') as f:
+            json.dump((self.opt, (self.state_c, self.state_h)), f)
 
     def shutdown(self):
         self._sess.close()
