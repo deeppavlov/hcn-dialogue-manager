@@ -29,22 +29,21 @@ class HybridCodeNetworkModel(object):
 
         # initialize parameters
         self.__init_params__()
-# TODO: initialize action_size
-        self.n_actions = params['action_size']
-        # build computational graph
-        self.__build__()
+        # initialize session
+        self._sess = tf.Session()
         # initialize metric variables
         self.reset_metrics()
 
         if self.opt.get('pretrained_model'):
             # restore state and session
-            self.load()
+            self.restore()
         else:
             sys.stderr.write("<INFO> Initializing model from scratch.\n")
             # zero state
             self.reset_state()
-            # initialize session
-            self._sess = tf.Session()
+            # build computational graph
+            self.__build__()
+            # initialize variables
             self._sess.run(tf.global_variables_initializer())
 
 
@@ -53,6 +52,8 @@ class HybridCodeNetworkModel(object):
         self.learning_rate = params['learning_rate']
         self.n_epoch = params['epoch_num']
         self.n_hidden = params['hidden_dim'] 
+# TODO: initialize action_size
+        self.n_actions = params['action_size']
 
     def __build__(self):
         tf.reset_default_graph()
@@ -60,8 +61,10 @@ class HybridCodeNetworkModel(object):
         # entry points
         self._features = tf.placeholder(tf.float32, [1, self.obs_size], 
                 name='features')
-        self._state_c = tf.placeholder(tf.float32, [1, self.n_hidden]) 
-        self._state_h = tf.placeholder(tf.float32, [1, self.n_hidden]) 
+        self._state_c = tf.placeholder(tf.float32, [1, self.n_hidden],
+                name='state_c') 
+        self._state_h = tf.placeholder(tf.float32, [1, self.n_hidden],
+                name='state_h') 
         self._action = tf.placeholder(tf.int32, 
                 name='ground_truth_action')
         self._action_mask = tf.placeholder(tf.float32, [self.action_size], 
@@ -90,22 +93,30 @@ class HybridCodeNetworkModel(object):
         _bo = tf.get_variable('bo', [self.action_size], 
                 initializer=tf.constant_initializer(0.))
         # get logits
-        self._logits = tf.matmul(_state_reshaped, _Wo) + _bo
+        _logits = tf.matmul(_state_reshaped, _Wo) + _bo
 
         # probabilities normalization : elemwise multiply with action mask
-        self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(self._logits)), 
+        self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)), 
                 self._action_mask)
         
         self._prediction = tf.arg_max(self._probs, dimension=0)
 
         self._loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=self._logits, labels=self._action)
+                logits=_logits, labels=self._action)
 
         self._train_op = tf.train.AdadeltaOptimizer(self.learning_rate)\
                 .minimize(self._loss)
 
+        # create collections for easier `restore` operation
+        tf.add_to_collection('state', self._state)
+        tf.add_to_collection('probs', self._probs)
+        tf.add_to_collection('prediction', self._prediction)
+        tf.add_to_collection('loss', self._loss)
+        tf.add_to_collection('train_op', self._train_op)
+
     def reset_metrics(self):
         self.n_examples = 0
+        self.step = 0
         self.train_loss = 0.
         self.train_acc = 0.
         self.train_f1 = 0.
@@ -141,24 +152,44 @@ class HybridCodeNetworkModel(object):
                     })
         return probs, prediction
 
-    def load(self, fname=None):
-# TODO: load hidden states
+    def restore(self, fname=None):
+# TODO: restore hidden states
         fname = fname or self.opt['pretrained_model']
-        fpath = 'ckpt/{}'.format(fname)
+        fpath, meta_fpath = "ckpt/{}".format(fname), "ckpt/{}.meta".format(fname)
         _ckpt = tf.train.get_checkpoint_state('ckpt', fname)
 
         if _ckpt:
-            sys.stderr.write("<INFO> loading model from {}\n".format(fpath))
-            _saver = tf.train.Saver()
+            sys.stderr.write("<INFO> restoring model from '{}'\n".format(meta_fpath))
+            tf.reset_default_graph()
+            #_saver = tf.train.Saver()
+            _saver = tf.train.import_meta_graph(meta_fpath)
             _saver.restore(self._sess, fpath)
+
+            # restore placeholders
+            _graph = tf.get_default_graph()
+            self._features = _graph.get_tensor_by_name("features:0")
+            self._state_c = _graph.get_tensor_by_name("state_c:0")
+            self._state_h = _graph.get_tensor_by_name("state_h:0")
+            self._action = _graph.get_tensor_by_name("ground_truth_action:0")
+            self._action_mask = _graph.get_tensor_by_name("action_mask:0")
+
+            # restore important operations
+            self._state = _graph.get_collection('state')[0]
+            self._probs = _graph.get_collection('probs')[0]
+            self._prediction = _graph.get_collection('prediction')[0]
+            self._loss = _graph.get_collection('loss')[0]
+            self._train_op = _graph.get_collection('train_op')[0]
         else:
             sys.stderr.write("<ERR> checkpoint '{}' not found\n".format(fpath))
 
-    def save(self, fname='hcn.ckpt'):
+    def save(self, fname='hcn'):
 # TODO: save hidden states
         fpath = "ckpt/{}".format(fname) 
         
-        sys.stderr.write("<INFO> saving to '{}'\n".format(fpath))
+        sys.stderr.write("<INFO> saving to '{}-{}.meta'\n".format(fpath, self.step))
         _saver = tf.train.Saver()
-        _saver.save(self._sess, fpath, global_step=0)
+        _saver.save(self._sess, fpath, global_step=self.step)
+
+    def shutdown(self):
+        self._sess.close()
 
