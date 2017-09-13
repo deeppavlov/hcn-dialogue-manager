@@ -25,3 +25,18 @@ import unicodedata
 def normalize_text(text):
     return unicodedata.normalize('NFD', text)
 
+def is_api_call(text):
+    return text.strip().startswith('api_call')
+
+def is_api_answer(text):
+    return (not is_silence(text)) and text.strip().endswith('<SILENCE>')
+
+def is_null_api_answer(text):
+    return text.strip().startswith('api_call no result')
+
+def is_silence(text):
+    return text.strip() == '<SILENCE>'
+
+def filter_service_words(tokens):
+    return filter(lambda t: '_' not in t, tokens)
+

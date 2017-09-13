@@ -18,8 +18,7 @@ import spacy
 
 from parlai.core.dict import DictionaryAgent
 
-from . import config
-from .utils import normalize_text
+from .utils import normalize_text, is_silence, is_api_answer, filter_service_words
 
 
 NLP = spacy.load('en')
@@ -62,6 +61,7 @@ class ActionDictionaryAgent(DictionaryAgent):
         """Build dictionary from the list of provided tokens.
         Only add words contained in self.embedding_words, if not None.
         """
+# TODO: ?add normalization of a token?
         for token in tokens:
             if self.embedding_words is not None and \
                 token not in self.embedding_words:
@@ -71,13 +71,18 @@ class ActionDictionaryAgent(DictionaryAgent):
                 index = len(self.tok2ind)
                 self.tok2ind[token] = index
                 self.ind2tok[index] = token
+"""
+    def observe(self, observation):
+        self.observation = observation
+        return self.observation
+"""
 
     def act(self):
         """Add only words passed in the 'text' field of the observation to 
         the dictionary.
         """
-        for text in self.observation.get('text'):
-            if text:
-                self.add_to_dict(self.tokenize(text))
+        for text in [self.observation.get('text')]:
+            if text and not is_silence(text) and not is_api_answer(text):
+                self.add_to_dict(filter_service_words(self.tokenize(text)))
         return {'id': self.getID()}
 
