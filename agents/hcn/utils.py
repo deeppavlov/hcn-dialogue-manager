@@ -40,3 +40,21 @@ def is_silence(text):
 def filter_service_words(tokens):
     return filter(lambda t: '_' not in t, tokens)
 
+# ------------------------------------------------------------------------------
+# Action type handle utilities.
+# -----------------------------------------------------------------------------
+
+def extract_babi5_template(tokens):
+    template = []
+    for token in tokens:
+        if 'resto_' in token: 
+            if 'phone' in token:
+                template.append('<info_phone>')
+            elif 'address' in token:
+                template.append('<info_address>')
+            else:
+                template.append('<restaurant>')
+        else:
+            template.append(token)
+    return ' '.join(template)
+
