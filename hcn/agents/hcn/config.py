@@ -28,8 +28,6 @@ def add_cmdline_args(parser):
     agent.add_argument('--pretrained-model', type=str, default=None,
             help='Load dict/features/weights/opts from the file prefix')
     agent.add_argument('--log-file', type=str, default=None)
-    agent.add_argument('--model-file', type=str, default=None,
-            help='Save dict/features/weights/opts to the file')
 
     # Model specification
     agent.add_argument('--learning-rate', type=float, default=.1)
