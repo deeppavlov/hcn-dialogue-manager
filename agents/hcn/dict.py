@@ -14,11 +14,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import os
 import spacy
 
 from parlai.core.dict import DictionaryAgent
 
+from .entities import Babi5EntityTracker 
 from .utils import normalize_text, is_silence, is_api_answer, filter_service_words
+from .utils import extract_babi5_template
 
 
 NLP = spacy.load('en')
@@ -33,13 +36,18 @@ class ActionDictionaryAgent(DictionaryAgent):
     def add_cmdline_args(argparser):
         group = DictionaryAgent.add_cmdline_args(argparser)
         group.add_argument(
-            '--pretrained_words', type='bool', default=True,
+            '--pretrained-words', type='bool', default=True,
             help='User only words found in provided embedding_file'
             )
+        group.add_argument(
+            '--action-file',
+            help='if set, the action templates will automatically save' +
+            'to this path during shutdown'
+            )
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, opt, shared=None):
         self.id = self.__class__.__name__
-        super().__init__(*args, **kwargs)
+        super().__init__(opt, shared)
 
         # index words in embedding file
         if self.opt['pretrained_words'] and self.opt.get('embedding_file'):
@@ -52,6 +60,16 @@ class ActionDictionaryAgent(DictionaryAgent):
             print('[ Num words in set = % d ]' % len(self.embedding_words))
         else:
             self.embedding_words = None
+
+        # action templates
+        self.action_templates = None
+        if not shared:
+            if opt.get('action_file') and os.path.isfile(opt['action_file']):
+                # load pre-existing action templates
+                self.load_templates(opt['action_file'])
+
+        # entity tracker
+        self.tracker = Babi5EntityTracker()
 
     def tokenize(self, text, **kwargs):
         tokens = NLP.tokenizer(text)
@@ -71,18 +89,80 @@ class ActionDictionaryAgent(DictionaryAgent):
                 index = len(self.tok2ind)
                 self.tok2ind[token] = index
                 self.ind2tok[index] = token
-"""
-    def observe(self, observation):
-        self.observation = observation
-        return self.observation
-"""
 
     def act(self):
-        """Add only words passed in the 'text' field of the observation to 
-        the dictionary.
         """
-        for text in [self.observation.get('text')]:
-            if text and not is_silence(text) and not is_api_answer(text):
-                self.add_to_dict(filter_service_words(self.tokenize(text)))
+            - Add words passed in the 'text' field of the observation to 
+        the dictionary,
+            - extract action templates from all 'label_candidates' once.
+        """
+        # if utterance is not <SILENCE> or an api_call response, add to dict
+        text = self.observation.get('text')
+        if text and not is_silence(text) and not is_api_answer(text):
+            self.add_to_dict(filter_service_words(self.tokenize(text)))
+
+        # if action_templates not extracted, extract them
+        if not self.action_templates:
+            templates = set()
+            for cand in self.observation.get('label_candidates'):
+                if cand:
+                    tokens = self.tracker.extract_entity_types(self.tokenize(cand))
+                    templates.add(extract_babi5_template(tokens))
+            self.action_templates = sorted(templates)
+
         return {'id': self.getID()}
+
+    def get_template_id(self, text):
+        template = extract_babi5_template(self.tokenize(text))
+        return self.action_templates.index(template)
+
+    def load_templates(self, filename, action_filename):
+        """Load pre-existing action templates."""
+        print('Dictionary: loading action templates from {}'.format(filename))
+        with open(filename) as read:
+            for line in read:
+                self.action_templates.append(line.strip())
+        print('[ num templates =  %d ]' % len(self.action_templates))
+
+    def save(self, filename=None, template_filename=None, append=False, sort=True):
+        """Save dictionary and templates to outer files.
+        """
+        super().save(filename, append=append, sort=sort)
+        self.save_templates(template_filename, append=append)
+
+    def save_templates(self, filename=None, append=False):
+        """Save action templates to file.
+        Templates are separated by ends of lines.
+        
+        If ``append`` (default ``False``) is set to ``True``, appens instead of pverwriting.
+        """
+        filename = filename or self.opt.get('action_file')
+        if filename is None:
+            print('Dictionary: action templates aren\'t saved: filename not specified.')
+        else:
+            print('Dictionary: saving action templates to {}'.format(filename))
+            with open(filename, 'a' if append else 'w') as write:
+                for template in self.action_templates:
+                    write.write('{}\n'.format(template))
+
+    def share(self):
+        shared = {}
+        shared['freq'] = self.freq
+        shared['tok2ind'] = self.tok2ind
+        shared['ind2tok'] = self.ind2tok
+        shared['action_templates'] = self.action_templates
+        shared['opt'] = self.opt
+        shared['class'] = type(self)
+        return shared
+
+    def shutdown(self):
+        """Save 
+           - dictionary on shutdown if ``save_path`` is set,
+           - action templates if ``template_save_path`` is set.
+        """
+        if hasattr(self, 'save_path'):
+            self.save(self.save_path)
+
+    def __str__(self):
+        return str(self.freq) + '\n' + str(self.action_templates)
 
