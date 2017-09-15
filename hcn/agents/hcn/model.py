@@ -54,8 +54,8 @@ class HybridCodeNetworkModel(object):
         self.learning_rate = params['learning_rate']
         self.n_epoch = params['epoch_num']
         self.n_hidden = params['hidden_dim'] 
-# TODO: initialize action_size
         self.n_actions = params['action_size']
+        self.obs_size = params['obs_size']
 
     def __build__(self):
         tf.reset_default_graph()
@@ -131,7 +131,7 @@ class HybridCodeNetworkModel(object):
         self.state_c = np.zeros([1,self.nb_hidden], dtype=np.float32)
         self.state_h = np.zeros([1,self.nb_hidden], dtype=np.float32)
 
-    def train_step(self, features, action, action_mask):
+    def update(self, features, action, action_mask):
         _, loss_value, self.state_c, self.state_h = self._sess.run(
                 [self._train_op, self._loss, self._state.c, self._state.h],
                 feed_dict={
@@ -143,7 +143,7 @@ class HybridCodeNetworkModel(object):
                     })
         return loss_value
 
-    def forward(self, features, action_mask):
+    def predict(self, features, action_mask):
         probs, prediction, self.state_c, self.state_h = self._sess.run(
                 [self._probs, self._prediction, self._state.c, self._state.h],
                 feed_dict={
@@ -155,18 +155,17 @@ class HybridCodeNetworkModel(object):
         return probs, prediction
 
     def restore(self, fname=None):
-        """Restores graph, important operations and state"""
+        """Restore graph, important operations and state"""
         fname = fname or self.opt['pretrained_model']
-        fpath = "ckpt/{}".format(fname)
-        json_fpath, meta_fpath = "{}.json".format(fpath), "{}.meta".format(fpath)
-        _ckpt = tf.train.get_checkpoint_state('ckpt', fname)
+        json_fname, meta_fname = "{}.json".format(fname), "{}.meta".format(fname)
+        _ckpt = tf.train.get_checkpoint_state(*os.path.split(fname))
 
         if _ckpt:
-            sys.stderr.write("<INFO> restoring model from '{}'\n".format(meta_fpath))
+            sys.stderr.write("<INFO> restoring model from '{}'\n".format(meta_fname))
             tf.reset_default_graph()
             #_saver = tf.train.Saver()
-            _saver = tf.train.import_meta_graph(meta_fpath)
-            _saver.restore(self._sess, fpath)
+            _saver = tf.train.import_meta_graph(meta_fname)
+            _saver.restore(self._sess, fname)
 
             # restore placeholders
             _graph = tf.get_default_graph()
@@ -184,32 +183,33 @@ class HybridCodeNetworkModel(object):
             self._train_op = _graph.get_collection('train_op')[0]
 
             # restore state
-            if os.path.isfile(json_fpath):
-                with open(json_fpath, 'r') as f:
+            if os.path.isfile(json_fname):
+                with open(json_fname, 'r') as f:
                     params, (self.state_c, self.state_h) = json.load(f)
                     self._init_params(params)
             else:
-                sys.stderr.write("<ERR>'{}' not found\n".format(json_fpath))
+                sys.stderr.write("<ERR>'{}' not found\n".format(json_fname))
                 exit()
         else:
-            sys.stderr.write("<ERR> checkpoint '{}' not found\n".format(fpath))
+            sys.stderr.write("<ERR> checkpoint '{}' not found\n".format(fname))
             exit()
 
     def save(self, fname='hcn'):
-        """Stores 
+        """Store 
             - graph in <fname>.meta
             - parameters and state in <fname>.json
         """
-        fpath = "ckpt/{}".format(fname) 
-        
+        meta_fname = "{}-{}.meta".format(fname, self.step)
+        json_fname = "{}-{}.json".format(fname, self.step)
+
         # save graph
-        sys.stderr.write("<INFO> saving to '{}-{}.meta'\n".format(fpath, self.step))
+        sys.stderr.write("<INFO> saving to '{}'\n".format(meta_fname))
         _saver = tf.train.Saver()
-        _saver.save(self._sess, fpath, global_step=self.step)
+        _saver.save(self._sess, fname, global_step=self.step)
         
         # save state and options
-        sys.stderr.write("<INFO> saving to '{}-{}.json'\n".format(fpath, self.step))
-        with open("{}-{}.json".format(fpath, self.step), 'w') as f:
+        sys.stderr.write("<INFO> saving to '{}'\n".format(json_fname))
+        with open(json_fname, 'w') as f:
             json.dump((self.opt, (self.state_c, self.state_h)), f)
 
     def shutdown(self):

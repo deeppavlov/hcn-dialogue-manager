@@ -31,12 +31,7 @@ class Babi5EntityTracker():
 
     def __init__(self):
         # tracker entity values
-        self.entities = {
-                self.EntType.PARTY_SIZE : None,
-                self.EntType.LOCATION : None,
-                self.EntType.CUISINE : None,
-                self.EntType.REST_TYPE : None,
-                }
+        self.entities = { t: None for t in self.EntType }
 
         # possible entity values
         self.all_entities = {
@@ -45,6 +40,11 @@ class Babi5EntityTracker():
                 self.EntType.CUISINE: frozenset(('british', 'cantonese', 'french', 'indian', 'italian', 'japanese', 'korean', 'spanish', 'thai', 'vietnamese')),
                 self.EntType.REST_TYPE: frozenset(('cheap', 'expensive', 'moderate'))
                 }
+
+        self.num_features = len(self.EntType)
+
+    def restart(self):
+        self.entities = { t: None for t in self.EntType }
 
     def entity2type(self, word):
         for t in self.EntType:

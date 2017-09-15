@@ -18,21 +18,21 @@ limitations under the License.
 def add_cmdline_args(parser):
     # Runtime environment
     agent = parser.add_argument_group('HCN Arguments')
-    agent.add_argument('--no_cuda', type='bool', default=False)
+    agent.add_argument('--no-cuda', type='bool', default=False)
     agent.add_argument('--gpu', type=int, default=-1)
     agent.add_argument('--random_seed', type=int, default=123098)
 
     # Basics
-    agent.add_argument('--embedding_file', type=str, default=None,
+    agent.add_argument('--embedding-file', type=str, default=None,
             help='File of space separated embeddings: w e1 .. ed')
-    agent.add_argument('--pretrained_model', type=str, default=None,
+    agent.add_argument('--pretrained-model', type=str, default=None,
             help='Load dict/features/weights/opts from the file prefix')
-    agent.add_argument('--log_file', type=str, default=None)
-    agent.add_argument('--model_file', type=str, default=None,
+    agent.add_argument('--log-file', type=str, default=None)
+    agent.add_argument('--model-file', type=str, default=None,
             help='Save dict/features/weights/opts to the file')
 
     # Model specification
-    agent.add_argument('--learning_rate', type=float, default=.1)
-    agent.add_argument('--epoch_num', type=int, default=1)
-    agent.add_argument('--hidden_dim', type=int, default=128)
+    agent.add_argument('--learning-rate', type=float, default=.1)
+    agent.add_argument('--epoch-num', type=int, default=1)
+    agent.add_argument('--hidden-dim', type=int, default=128)
 

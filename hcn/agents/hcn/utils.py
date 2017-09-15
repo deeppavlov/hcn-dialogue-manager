@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import unicodedata
+import numpy as np
 
 
 # ------------------------------------------------------------------------------
@@ -42,7 +43,7 @@ def filter_service_words(tokens):
 
 # ------------------------------------------------------------------------------
 # Action type handle utilities.
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 
 def extract_babi5_template(tokens):
     template = []
@@ -57,4 +58,16 @@ def extract_babi5_template(tokens):
         else:
             template.append(token)
     return ' '.join(template)
+
+# ------------------------------------------------------------------------------
+# Tensorflow input utilities.
+# ------------------------------------------------------------------------------
+
+def vectorize(opt, tokens, word_dict, feature_dict):
+    """ Turn tokenized text inputs into feature vectorsi."""
+    # Bag of words features
+    bow_features = np.zeros([len(word_dict)], dtype=np.float32)
+    for t in tokens:
+        bow_features[word_dict[t]] = 1.
+    
 
