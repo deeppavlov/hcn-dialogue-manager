@@ -13,6 +13,7 @@ import copy
 import importlib
 import os
 
+
 def build_dict(opt):
     if not opt.get('dict_file'):
         print('Tried to build dictionary but `--dict-file` is not set. Set ' +
