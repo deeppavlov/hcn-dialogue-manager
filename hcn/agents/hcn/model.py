@@ -35,7 +35,7 @@ class HybridCodeNetworkModel(object):
         if self.opt.get('pretrained_model'):
             print("[ Initializing model from `{}` ]".format(self.opt['pretrained_model']))
             # restore state, parameters and session
-            self.restore()
+            self.restore(self.opt['pretrained_model'])
         else:
             print("[ Initializing model from scratch ]")
             # initialize parameters
@@ -107,8 +107,9 @@ class HybridCodeNetworkModel(object):
         self._loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
                 logits=_logits, labels=self._action)
 
+        self._step = tf.Variable(0, trainable=False, name='global_step') 
         self._train_op = tf.train.AdadeltaOptimizer(self.learning_rate)\
-                .minimize(self._loss)
+                .minimize(self._loss, global_step=self._step)
 
         # create collections for easier `restore` operation
         tf.add_to_collection('next_state_c', self._next_state.c)
@@ -116,11 +117,11 @@ class HybridCodeNetworkModel(object):
         tf.add_to_collection('probs', self._probs)
         tf.add_to_collection('prediction', self._prediction)
         tf.add_to_collection('loss', self._loss)
+        tf.add_to_collection('global_step', self._step)
         tf.add_to_collection('train_op', self._train_op)
 
     def reset_metrics(self):
         self.n_examples = 0
-        self.step = 0
         self.train_loss = 0.
         self.train_acc = 0.
         self.train_f1 = 0.
@@ -144,7 +145,6 @@ class HybridCodeNetworkModel(object):
                     self._state_h: self.state_h,
                     self._action_mask: action_mask
                     })
-        self.step += 1
         return loss_value
 
     def predict(self, features, action_mask):
@@ -155,7 +155,7 @@ class HybridCodeNetworkModel(object):
                     self._features: features.reshape([1, self.obs_size]),
                     self._state_c: self.state_c,
                     self._state_h: self.state_h,
-                    seld._action_mask: action_mask
+                    self._action_mask: action_mask
                     })
         return probs, prediction
 
@@ -163,9 +163,9 @@ class HybridCodeNetworkModel(object):
         """Restore graph, important operations and state"""
         fname = fname or self.opt['pretrained_model']
         json_fname, meta_fname = "{}.json".format(fname), "{}.meta".format(fname)
-        _ckpt = tf.train.get_checkpoint_state(*os.path.split(fname))
+        #tf.train.get_checkpoint_state(*os.path.split(meta_fname))
 
-        if _ckpt:
+        if os.path.isfile(meta_fname):
             print("[restoring model from {}]".format(meta_fname))
             tf.reset_default_graph()
             #_saver = tf.train.Saver()
@@ -190,6 +190,7 @@ class HybridCodeNetworkModel(object):
             self._prediction = _graph.get_collection('prediction')[0]
             self._loss = _graph.get_collection('loss')[0]
             self._train_op = _graph.get_collection('train_op')[0]
+            self._step = _graph.get_collection('global_step')[0]
 
             # restore state
             if os.path.isfile(json_fname):
@@ -197,12 +198,12 @@ class HybridCodeNetworkModel(object):
                     params, (state_c, state_h) = json.load(f)
                     self.state_c = np.array(state_c, dtype=np.float32)
                     self.state_h = np.array(state_h, dtype=np.float32)
-                    self._init_params(params)
+                    self.__init_params__(params)
             else:
                 print("[{} not found]".format(json_fname))
                 exit()
         else:
-            print("[checkpoint {} not found]".format(fname))
+            print("[{} not found]".format(meta_fname))
             exit()
 
     def save(self, fname='hcn'):
@@ -210,13 +211,14 @@ class HybridCodeNetworkModel(object):
             - graph in <fname>.meta
             - parameters and state in <fname>.json
         """
-        meta_fname = "{}-{}.meta".format(fname, self.step)
-        json_fname = "{}-{}.json".format(fname, self.step)
+        step = tf.train.global_step(self._sess, self._step)
+        meta_fname = "{}-{}.meta".format(fname, step)
+        json_fname = "{}-{}.json".format(fname, step)
 
         # save graph
         print("[saving graph to {}]".format(meta_fname))
         _saver = tf.train.Saver()
-        _saver.save(self._sess, fname, global_step=self.step)
+        _saver.save(self._sess, fname, global_step=step)
         
         # save state and options
         print("[saving options to {}]".format(json_fname))

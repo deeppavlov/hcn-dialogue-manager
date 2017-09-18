@@ -29,38 +29,42 @@ class Babi5EntityTracker():
         def __str__(self):
             return "<{}>".format(self.name.lower())
 
+    # possible entity values
+    all_entities = {
+            EntType.PARTY_SIZE: frozenset(('1', '2', '3', '4', '5', '6', '7', '8', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight')),
+            EntType.LOCATION: frozenset(('bangkok', 'beijing', 'bombay', 'hanoi', 'paris', 'rome', 'london', 'madrid', 'seoul', 'tokyo')),
+            EntType.CUISINE: frozenset(('british', 'cantonese', 'french', 'indian', 'italian', 'japanese', 'korean', 'spanish', 'thai', 'vietnamese')),
+            EntType.REST_TYPE: frozenset(('cheap', 'expensive', 'moderate'))
+            }
+
+    num_features = len(EntType)
+
     def __init__(self):
-        # tracker entity values
-        self.entities = { t: None for t in self.EntType }
-
-        # possible entity values
-        self.all_entities = {
-                self.EntType.PARTY_SIZE: frozenset(('1', '2', '3', '4', '5', '6', '7', '8', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight')),
-                self.EntType.LOCATION: frozenset(('bangkok', 'beijing', 'bombay', 'hanoi', 'paris', 'rome', 'london', 'madrid', 'seoul', 'tokyo')),
-                self.EntType.CUISINE: frozenset(('british', 'cantonese', 'french', 'indian', 'italian', 'japanese', 'korean', 'spanish', 'thai', 'vietnamese')),
-                self.EntType.REST_TYPE: frozenset(('cheap', 'expensive', 'moderate'))
-                }
-
-        self.num_features = len(self.EntType)
+        self.restart()
 
     def restart(self):
         self.entities = { t: None for t in self.EntType }
 
-    def entity2type(self, word):
-        for t in self.EntType:
-            if word in self.all_entities.get(t):
+    @classmethod
+    def entity2type(cls, word):
+        for t in cls.EntType:
+            if word in cls.all_entities.get(t):
                 return t
         return None
 
-    def extract_entity_types(self, tokens, update=True):
+    @classmethod
+    def extract_entity_types(cls, tokens):
         new_tokens = []
         for token in tokens:
-            ent_type = self.entity2type(token)
-            if update and (ent_type is not None):
-                self.entities[ent_type] = token
-
+            ent_type = cls.entity2type(token)
             new_tokens.append(str(ent_type or token))
+        return new_tokens
 
+    def update_entities(self, tokens):
+        new_tokens = self.extract_entity_types(tokens)
+        for token, new_token in zip(tokens, new_tokens):
+            if new_token != token:
+                self.entities[new_token] = token
         return new_tokens
 
     def binary_features(self):

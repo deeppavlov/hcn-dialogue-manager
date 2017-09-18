@@ -71,7 +71,7 @@ class ActionDictionaryAgent(DictionaryAgent):
                 self.load_actions(opt['dict_file'] + '.actions')
 
         # entity tracker
-        self.tracker = Babi5EntityTracker()
+        self.tracker = Babi5EntityTracker
 
     def tokenize(self, text, **kwargs):
         tokens = NLP.tokenizer(text)

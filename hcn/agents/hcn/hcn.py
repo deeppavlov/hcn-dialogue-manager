@@ -32,6 +32,8 @@ class HybridCodeNetworkAgent(Agent):
     def add_cmdline_args(argparser):
         config.add_cmdline_args(argparser)
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
+        argparser.add_argument('--debug', type='bool', default=False,
+                help='Debug output.')
 
     @staticmethod
     def dictionary_class():
@@ -95,7 +97,11 @@ class HybridCodeNetworkAgent(Agent):
             self.n_examples += 1
             self.model.update(*ex)
         else:
+            if self.opt['debug']:
+                print("Example = ", ex)
             probs, pred = self.model.predict(*ex)
+            if self.opt['debug']:
+                print("Probs = {}, pred = {}".format(probs, pred))
             reply['text'] = self.word_dict.get_action_by_id(pred)
 
         return reply
@@ -117,27 +123,33 @@ class HybridCodeNetworkAgent(Agent):
         for t in tokens:
             bow_features[self.word_dict[t]] = 1.
         # Text entity features
-        self.ent_tracker.extract_entity_types(tokens, update=True)
+        self.ent_tracker.update_entities(tokens)
         ent_features = self.ent_tracker.binary_features()
+        if self.opt['debug']:
+            print("Bow feats shape = {}, ent feats shape = {}".format(
+                bow_features.shape, ent_features.shape))
         features = np.hstack((bow_features, ent_features))[np.newaxis, :]
+        if self.opt['debug']:
+            print("Feats shape = ", features.shape)
         
 # TODO: non ones action mask
         action_mask = np.ones(self.n_actions, dtype=np.float32)
+        if self.opt['debug']:
+            print("Action_mask shape = ", action_mask.shape)
        
         # extract action templates
         targets = []
-        if 'labels' in ex:
-            for label in ex['labels']:
-                try:
-                    template = self.ent_tracker.extract_entity_types(
-                            self.word_dict.tokenize(label), 
-                            update=False
-                            )
-                    action = self.word_dict.get_action_id(template)
-                except:
-                    raise RuntimeError('Invalid label. Should match one of action templates from train.')
-                targets.append((label, action))
+        for label in ex.get('labels', []):
+            try:
+                template = self.ent_tracker.extract_entity_types(
+                        self.word_dict.tokenize(label))
+                action = self.word_dict.get_action_id(template)
+            except:
+                raise RuntimeError('Invalid label. Should match one of action templates from train.')
+            targets.append((label, action))
         # in case of prediction do not return action
+        if self.opt['debug']:
+            print("Targets = ", targets)
         if not targets:
             return (features, action_mask)
 
