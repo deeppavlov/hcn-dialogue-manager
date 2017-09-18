@@ -66,7 +66,9 @@ class ActionDictionaryAgent(DictionaryAgent):
         if not shared:
             if opt.get('action_file') and os.path.isfile(opt['action_file']):
                 # load pre-existing action templates
-                self.load_templates(opt['action_file'])
+                self.load_actions(opt['action_file'])
+            elif opt.get('dict_file') and os.path.isfile(opt['dict_file'] + '.actions'):
+                self.load_actions(opt['dict_file'] + '.actions')
 
         # entity tracker
         self.tracker = Babi5EntityTracker()
@@ -103,49 +105,51 @@ class ActionDictionaryAgent(DictionaryAgent):
 
         # if action_templates not extracted, extract them
         if not self.action_templates:
-            templates = set()
+            actions = set()
             for cand in self.observation.get('label_candidates'):
                 if cand:
                     tokens = self.tracker.extract_entity_types(self.tokenize(cand))
-                    templates.add(extract_babi5_template(tokens))
-            self.action_templates = sorted(templates)
+                    actions.add(extract_babi5_template(tokens))
+            self.action_templates = sorted(actions)
 
         return {'id': self.getID()}
 
-    def get_template_id(self, text):
-        template = extract_babi5_template(self.tokenize(text))
-        return self.action_templates.index(template)
+    def get_action_id(self, tokens):
+        action = extract_babi5_template(tokens)
+        return self.action_templates.index(action)
 
-    def get_template_by_id(self, template_id):
-        return self.action_templates[template_id]
+    def get_action_by_id(self, action_id):
+        return self.action_templates[action_id]
 
-    def load_templates(self, filename, action_filename):
+    def load_actions(self, filename):
         """Load pre-existing action templates."""
         print('Dictionary: loading action templates from {}'.format(filename))
         with open(filename) as read:
             for line in read:
                 self.action_templates.append(line.strip())
-        print('[ num templates =  %d ]' % len(self.action_templates))
+        print('[ num action templates =  %d ]' % len(self.action_templates))
 
-    def save(self, filename=None, template_filename=None, append=False, sort=True):
-        """Save dictionary and templates to outer files."""
+    def save(self, filename=None, action_filename=None, append=False, sort=True):
+        """Save dictionary and actions to outer files."""
         super().save(filename, append=append, sort=sort)
-        self.save_templates(template_filename, append=append)
+        self.save_actions(action_filename, append=append)
 
-    def save_templates(self, filename=None, append=False):
+    def save_actions(self, filename=None, append=False):
         """Save action templates to file.
         Templates are separated by ends of lines.
         
-        If ``append`` (default ``False``) is set to ``True``, appens instead of pverwriting.
+        If ``append`` (default ``False``) is set to ``True``, appends instead of rewriting.
         """
         filename = filename or self.opt.get('action_file')
+        if self.opt.get('dict_file'):
+            filename = filename or self.opt['dict_file'] + '.actions'
         if filename is None:
             print('Dictionary: action templates aren\'t saved: filename not specified.')
         else:
             print('Dictionary: saving action templates to {}'.format(filename))
             with open(filename, 'a' if append else 'w') as write:
-                for template in self.action_templates:
-                    write.write('{}\n'.format(template))
+                for action in self.action_templates:
+                    write.write('{}\n'.format(action))
 
     def share(self):
         shared = {}
@@ -158,10 +162,7 @@ class ActionDictionaryAgent(DictionaryAgent):
         return shared
 
     def shutdown(self):
-        """Save 
-           - dictionary on shutdown if ``save_path`` is set,
-           - action templates if ``template_save_path`` is set.
-        """
+        """Save dictionary and actions on shutdown if ``save_path`` is set."""
         if hasattr(self, 'save_path'):
             self.save(self.save_path)
 

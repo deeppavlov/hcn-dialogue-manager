@@ -14,8 +14,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import sys
 import copy
+import numpy as np
 
 from parlai.core.agents import Agent
 
@@ -31,6 +31,7 @@ class HybridCodeNetworkAgent(Agent):
     @staticmethod
     def add_cmdline_args(argparser):
         config.add_cmdline_args(argparser)
+        HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
 
     @staticmethod
     def dictionary_class():
@@ -95,7 +96,7 @@ class HybridCodeNetworkAgent(Agent):
             self.model.update(*ex)
         else:
             probs, pred = self.model.predict(*ex)
-            reply['text'] = self.word_dict.get_template_by_id(pred)
+            reply['text'] = self.word_dict.get_action_by_id(pred)
 
         return reply
 
@@ -105,29 +106,34 @@ class HybridCodeNetworkAgent(Agent):
             return
 
         # reinitilize entity tracker for new dialog
-        if episode_done: 
+        if self.episode_done: 
             self.ent_tracker.restart()
 
         # tokenize input
         tokens = self.word_dict.tokenize(ex['text'])
  
         # Bag of words features
-        bow_features = np.zeros([len(self.word_dict)], dtype=np.float32)
+        bow_features = np.zeros(len(self.word_dict), dtype=np.float32)
         for t in tokens:
             bow_features[self.word_dict[t]] = 1.
         # Text entity features
-        ent_features = self.ent_tracker.binary_features(tokens)
-        features = np.stack((bow_features, ent_features))[np.newaxis, :]
+        self.ent_tracker.extract_entity_types(tokens, update=True)
+        ent_features = self.ent_tracker.binary_features()
+        features = np.hstack((bow_features, ent_features))[np.newaxis, :]
         
 # TODO: non ones action mask
-        action_mask = np.ones((1, self.n_actions), dtype=np.float32)
+        action_mask = np.ones(self.n_actions, dtype=np.float32)
        
         # extract action templates
         targets = []
         if 'labels' in ex:
             for label in ex['labels']:
                 try:
-                    action = self.word_dict.get_template_id(label)
+                    template = self.ent_tracker.extract_entity_types(
+                            self.word_dict.tokenize(label), 
+                            update=False
+                            )
+                    action = self.word_dict.get_action_id(template)
                 except:
                     raise RuntimeError('Invalid label. Should match one of action templates from train.')
                 targets.append((label, action))
@@ -148,10 +154,10 @@ class HybridCodeNetworkAgent(Agent):
         """Save the parameters of the agent to a file."""
         fname = fname or self.opt.get('model_file', None)
         if fname:
-            sys.stderr.write("<INFO> saving model to '{}'\n".format(fname))
+            print("[saving model to {}]".format(fname))
             self.model.save(fname)
         else:
-            sys.stderr.write("<WARN> failed to save model.\n")
+            print("[failed to save model]")
 
     def shutdown(self):
         """Final cleanup."""
