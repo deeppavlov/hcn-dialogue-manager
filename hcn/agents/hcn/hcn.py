@@ -73,10 +73,6 @@ class HybridCodeNetworkAgent(Agent):
     def observe(self, observation):
         """Receive an observation/action dict."""
         observation = copy.deepcopy(observation)
-        if not self.episode_done:
-            # if previous observation was not an end of a dialog, restore it
-            prev_dialogue = self.observation['text']
-            observation['text'] = prev_dialogue + '\n' + observation['text']
         self.observation = observation
         self.episode_done = observation['episode_done']
         return observation
