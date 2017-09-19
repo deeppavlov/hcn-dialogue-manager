@@ -29,9 +29,6 @@ class HybridCodeNetworkModel(object):
     def __init__(self, opt):
         self.opt = copy.deepcopy(opt)
 
-        # initialize metric variables
-        self.reset_metrics()
-
         if self.opt.get('pretrained_model'):
             print("[ Initializing model from `{}` ]".format(self.opt['pretrained_model']))
             # restore state, parameters and session
@@ -101,7 +98,6 @@ class HybridCodeNetworkModel(object):
         self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)), 
                 self._action_mask)
         
-        #self._prediction = tf.arg_max(self._probs, dimension=0)
         self._prediction = tf.argmax(self._probs, axis=0)
 
         self._loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
@@ -120,43 +116,36 @@ class HybridCodeNetworkModel(object):
         tf.add_to_collection('global_step', self._step)
         tf.add_to_collection('train_op', self._train_op)
 
-    def reset_metrics(self):
-        self.n_examples = 0
-        self.train_loss = 0.
-        self.train_acc = 0.
-        self.train_f1 = 0.
-        self.val_loss = 0.
-        self.val_acc = 0.
-        self.val_f1 = 0.
-
     def reset_state(self):
         # set zero state
         self.state_c = np.zeros([1,self.n_hidden], dtype=np.float32)
         self.state_h = np.zeros([1,self.n_hidden], dtype=np.float32)
 
     def update(self, features, action, action_mask):
-        _, loss_value, self.state_c, self.state_h = self._sess.run(
-                [self._train_op, self._loss, self._next_state.c, 
-                    self._next_state.h],
-                feed_dict={
-                    self._features: features.reshape([1, self.obs_size]),
-                    self._action: [action],
-                    self._state_c: self.state_c,
-                    self._state_h: self.state_h,
-                    self._action_mask: action_mask
-                    })
-        return loss_value
+        _, loss_value, self.state_c, self.state_h, prediction = \
+                self._sess.run(
+                        [ self._train_op, self._loss, self._next_state.c, 
+                            self._next_state.h, self._prediction ],
+                        feed_dict={
+                            self._features: features.reshape([1, self.obs_size]),
+                            self._action: [action],
+                            self._state_c: self.state_c,
+                            self._state_h: self.state_h,
+                            self._action_mask: action_mask
+                            })
+        return loss_value[0], prediction
 
     def predict(self, features, action_mask):
-        probs, prediction, self.state_c, self.state_h = self._sess.run(
-                [self._probs, self._prediction, self._next_state.c, 
-                    self._next_state.h],
-                feed_dict={
-                    self._features: features.reshape([1, self.obs_size]),
-                    self._state_c: self.state_c,
-                    self._state_h: self.state_h,
-                    self._action_mask: action_mask
-                    })
+        probs, prediction, self.state_c, self.state_h = \
+                self._sess.run(
+                        [ self._probs, self._prediction, self._next_state.c, 
+                            self._next_state.h ],
+                        feed_dict={
+                            self._features: features.reshape([1, self.obs_size]),
+                            self._state_c: self.state_c,
+                            self._state_h: self.state_h,
+                            self._action_mask: action_mask
+                            })
         return probs, prediction
 
     def restore(self, fname=None):

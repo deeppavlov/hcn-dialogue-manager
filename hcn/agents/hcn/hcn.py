@@ -24,6 +24,7 @@ from .model import HybridCodeNetworkModel
 from .dict import ActionDictionaryAgent
 from .entities import Babi5EntityTracker
 from .utils import normalize_text, extract_babi5_template
+from .metrics import DialogMetrics
 
 
 class HybridCodeNetworkAgent(Agent):
@@ -61,11 +62,13 @@ class HybridCodeNetworkAgent(Agent):
 
         # intialize parameters
         self.is_shared = False
-        self.n_examples = 0
         self.n_actions = len(self.word_dict.action_templates)
 
+        # initialize metrics
+        self.metrics = DialogMetrics(self.n_actions)
+
         opt['action_size'] = self.n_actions
-# TODO: train on bow and binary entity features
+# TODO: train not only on bow and binary entity features
         opt['obs_size'] = len(self.word_dict) + self.ent_tracker.num_features 
 
         self.model = HybridCodeNetworkModel(opt) 
@@ -90,8 +93,19 @@ class HybridCodeNetworkAgent(Agent):
 
         # either train or predict
         if 'labels' in self.observation:
-            self.n_examples += 1
-            self.model.update(*ex)
+
+            loss, pred = self.model.update(*ex)
+            pred_text = self.word_dict.get_action_by_id(pred)
+
+            # update metrics
+            self.metrics.n_examples += 1
+            if self.episode_done:
+                self.metrics.n_dialogs += 1
+            self.metrics.train_loss += loss
+            self.metrics.conf_matrix[pred, ex[1]] += 1
+            self.metrics.n_train_corr_examples += \
+                    int(pred_text == self.observation['labels'][0])
+#TODO: update number of correct dialogs
         else:
             if self.opt['debug']:
                 print("Example = ", ex)
@@ -154,9 +168,11 @@ class HybridCodeNetworkAgent(Agent):
 
         return (features, action, action_mask)
 
+    def report(self):
+        return self.metrics.report()
+
     def reset_metrics(self):
-        self.model.reset_metrics()
-        self.n_examples = 0
+        self.metrics.reset()
 
     def save(self, fname=None):
         """Save the parameters of the agent to a file."""
