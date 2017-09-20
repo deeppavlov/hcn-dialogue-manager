@@ -89,7 +89,7 @@ class DialogMetrics(object):
 
     @property
     def mean_train_loss(self):
-        return self.train_loss / self.n_examples
+        return self.train_loss / max(1., self.n_examples)
 
     def report(self):
         return ('[ dialogs:{:d} exs:{:d} mean_loss:{:.4f}'\

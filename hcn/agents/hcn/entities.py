@@ -61,10 +61,12 @@ class Babi5EntityTracker():
         return new_tokens
 
     def update_entities(self, tokens):
-        new_tokens = self.extract_entity_types(tokens)
-        for token, new_token in zip(tokens, new_tokens):
-            if new_token != token:
-                self.entities[new_token] = token
+        new_tokens = []
+        for token in tokens:
+            ent_type = self.entity2type(token)
+            if ent_type is not None:
+                self.entities[ent_type] = token
+            new_tokens.append(str(ent_type or token))
         return new_tokens
 
     def binary_features(self):
@@ -74,4 +76,10 @@ class Babi5EntityTracker():
 # TODO: categorical entity features
     def categ_features(self):
         return []
+
+    def fill_entities(self, text):
+        for ent_type, value in self.entities.items():
+            if value:
+                text = text.replace(str(ent_type), value)
+        return text
 

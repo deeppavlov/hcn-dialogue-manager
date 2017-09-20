@@ -23,7 +23,7 @@ from . import config
 from .model import HybridCodeNetworkModel
 from .dict import ActionDictionaryAgent
 from .entities import Babi5EntityTracker
-from .utils import normalize_text, extract_babi5_template
+from .utils import normalize_text, extract_babi5_template, is_silence
 from .metrics import DialogMetrics
 
 
@@ -69,7 +69,7 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: train not only on bow and binary entity features
-        opt['obs_size'] = len(self.word_dict) + self.ent_tracker.num_features 
+        opt['obs_size'] = 1 + len(self.word_dict) + self.ent_tracker.num_features 
 
         self.model = HybridCodeNetworkModel(opt) 
 
@@ -112,7 +112,8 @@ class HybridCodeNetworkAgent(Agent):
             probs, pred = self.model.predict(*ex)
             if self.opt['debug']:
                 print("Probs = {}, pred = {}".format(probs, pred))
-            reply['text'] = self.word_dict.get_action_by_id(pred)
+                print("Entities = ", self.ent_tracker.entities.values())
+            reply['text'] = self._generate_response(pred)
 
         return reply
 
@@ -138,7 +139,10 @@ class HybridCodeNetworkAgent(Agent):
         if self.opt['debug']:
             print("Bow feats shape = {}, ent feats shape = {}".format(
                 bow_features.shape, ent_features.shape))
-        features = np.hstack((bow_features, ent_features))[np.newaxis, :]
+        # Other features
+        context_features = np.array([is_silence(ex['text'])], dtype=np.float32)
+        features = np.hstack((bow_features, ent_features, context_features))\
+                [np.newaxis, :]
         if self.opt['debug']:
             print("Feats shape = ", features.shape)
         
@@ -167,6 +171,11 @@ class HybridCodeNetworkAgent(Agent):
         action = targets[0][1]
 
         return (features, action, action_mask)
+
+    def _generate_response(self, action_id):
+        """Convert action template id and entities from tracker to final response."""
+        template = self.word_dict.get_action_by_id(action_id)
+        return self.ent_tracker.fill_entities(template) 
 
     def report(self):
         return self.metrics.report()

@@ -74,8 +74,21 @@ class ActionDictionaryAgent(DictionaryAgent):
         self.tracker = Babi5EntityTracker
 
     def tokenize(self, text, **kwargs):
-        tokens = NLP.tokenizer(text)
-        return (t.text for t in tokens)
+        tokens = [t.text for t in NLP.tokenizer(text)]
+
+        new_tokens = []
+        opening_i = None
+        for i, t in enumerate(tokens):
+            if t == '<':
+                opening_i = i
+            elif opening_i is not None:
+                if t == '>':
+                    bracket_expr = '<' + ' '.join(tokens[opening_i+1:i]) + '>'
+                    new_tokens.append(bracket_expr)
+                    opening_i = None
+            else:
+                new_tokens.append(t)
+        return new_tokens
 
     def add_to_dict(self, tokens):
         """Build dictionary from the list of provided tokens.
