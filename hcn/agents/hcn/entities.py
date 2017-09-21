@@ -21,20 +21,20 @@ import numpy as np
 class Babi5EntityTracker():
 
     class EntType(Enum):
-        PARTY_SIZE = auto()
-        LOCATION = auto()
-        CUISINE = auto()
-        REST_TYPE = auto()
+        R_number = auto()
+        R_location = auto()
+        R_cuisine = auto()
+        R_price = auto()
 
         def __str__(self):
-            return "<{}>".format(self.name.lower())
+            return "{}".format(self.name)
 
     # possible entity values
     all_entities = {
-            EntType.PARTY_SIZE: frozenset(('1', '2', '3', '4', '5', '6', '7', '8', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight')),
-            EntType.LOCATION: frozenset(('bangkok', 'beijing', 'bombay', 'hanoi', 'paris', 'rome', 'london', 'madrid', 'seoul', 'tokyo')),
-            EntType.CUISINE: frozenset(('british', 'cantonese', 'french', 'indian', 'italian', 'japanese', 'korean', 'spanish', 'thai', 'vietnamese')),
-            EntType.REST_TYPE: frozenset(('cheap', 'expensive', 'moderate'))
+            EntType.R_number: frozenset(('1', '2', '3', '4', '5', '6', '7', '8', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight')),
+            EntType.R_location: frozenset(('bangkok', 'beijing', 'bombay', 'hanoi', 'paris', 'rome', 'london', 'madrid', 'seoul', 'tokyo')),
+            EntType.R_cuisine: frozenset(('british', 'cantonese', 'french', 'indian', 'italian', 'japanese', 'korean', 'spanish', 'thai', 'vietnamese')),
+            EntType.R_price: frozenset(('cheap', 'expensive', 'moderate'))
             }
 
     num_features = len(EntType)

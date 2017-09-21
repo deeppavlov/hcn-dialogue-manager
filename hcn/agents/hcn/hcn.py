@@ -23,7 +23,8 @@ from . import config
 from .model import HybridCodeNetworkModel
 from .dict import ActionDictionaryAgent
 from .entities import Babi5EntityTracker
-from .utils import normalize_text, extract_babi5_template, is_silence
+from .utils import normalize_text, extract_babi5_template
+from .utils import is_silence, is_null_api_answer, is_api_answer, is_babi5_restaurant
 from .metrics import DialogMetrics
 
 
@@ -62,6 +63,8 @@ class HybridCodeNetworkAgent(Agent):
 
         # intialize parameters
         self.is_shared = False
+        self.database_results = []
+        self.current_result = None
         self.n_actions = len(self.word_dict.action_templates)
 
         # initialize metrics
@@ -69,7 +72,7 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: train not only on bow and binary entity features
-        opt['obs_size'] = 1 + len(self.word_dict) + self.ent_tracker.num_features 
+        opt['obs_size'] = 3 + len(self.word_dict) + self.ent_tracker.num_features 
 
         self.model = HybridCodeNetworkModel(opt) 
 
@@ -125,10 +128,22 @@ class HybridCodeNetworkAgent(Agent):
         # reinitilize entity tracker for new dialog
         if self.episode_done: 
             self.ent_tracker.restart()
+            self.database_results = []
+            self.current_result = None
 
         # tokenize input
         tokens = self.word_dict.tokenize(ex['text'])
  
+        # store database results
+        if is_api_answer(ex['text']):
+            self.word_dict.update_database(ex['text'])
+            entities = {k: v for k, v in self.ent_tracker.entities.items() if v}
+            self.database_results = self.word_dict.database.search(entities,
+                    order_by='R_rating', ascending=False)
+            self.current_result = self.database_results.pop(0)
+            if opt.get('debug'):
+                print("API best response = ", self.current_result)
+
         # Bag of words features
         bow_features = np.zeros(len(self.word_dict), dtype=np.float32)
         for t in tokens:
@@ -140,7 +155,11 @@ class HybridCodeNetworkAgent(Agent):
             print("Bow feats shape = {}, ent feats shape = {}".format(
                 bow_features.shape, ent_features.shape))
         # Other features
-        context_features = np.array([is_silence(ex['text'])], dtype=np.float32)
+        context_features = np.array(
+                [is_silence(ex['text']),
+                    is_api_answer(ex['text']),
+                    is_null_api_answer(ex['text'])], 
+                dtype=np.float32)
         features = np.hstack((bow_features, ent_features, context_features))\
                 [np.newaxis, :]
         if self.opt['debug']:
@@ -175,6 +194,9 @@ class HybridCodeNetworkAgent(Agent):
     def _generate_response(self, action_id):
         """Convert action template id and entities from tracker to final response."""
         template = self.word_dict.get_action_by_id(action_id)
+        if self.current_result is not None:
+            for k, v in self.current_result.items():
+                template = template.replace(k, str(v)) 
         return self.ent_tracker.fill_entities(template) 
 
     def report(self):

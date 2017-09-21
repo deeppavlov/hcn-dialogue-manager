@@ -42,7 +42,7 @@ def filter_service_words(tokens):
     return filter(lambda t: '_' not in t, tokens)
 
 # ------------------------------------------------------------------------------
-# Action type handle utilities.
+# Babi5 specific utilities.
 # ------------------------------------------------------------------------------
 
 def extract_babi5_template(tokens):
@@ -50,24 +50,33 @@ def extract_babi5_template(tokens):
     for token in tokens:
         if 'resto_' in token: 
             if 'phone' in token:
-                template.append('<info_phone>')
+                template.append('R_phone')
             elif 'address' in token:
-                template.append('<info_address>')
+                template.append('R_address')
             else:
-                template.append('<restaurant>')
+                template.append('resto_')
         else:
             template.append(token)
     return ' '.join(template)
 
-# ------------------------------------------------------------------------------
-# Tensorflow input utilities.
-# ------------------------------------------------------------------------------
 
-def vectorize(opt, tokens, word_dict, feature_dict):
-    """ Turn tokenized text inputs into feature vectorsi."""
-    # Bag of words features
-    bow_features = np.zeros([len(word_dict)], dtype=np.float32)
-    for t in tokens:
-        bow_features[word_dict[t]] = 1.
-    
+def iter_babi5_api_response(text):
+    info = {}
+    for ln in text.split('\n'):
+        tokens = ln.split()
+        if is_silence(ln) or (len(tokens) != 3):
+            return
+        rest, prop, value = tokens
+        value = int(value) if value.isdecimal() else value
+        if not info:
+            info['resto_'] = rest
+        if info['resto_'] == rest: 
+            info[prop] = value
+        else:
+            yield info
+            info = {'resto_': rest, prop: value}
+
+#TODO: filling of restaurant info
+def is_babi5_restaurant(word):
+    return word.startswith('resto_')
 

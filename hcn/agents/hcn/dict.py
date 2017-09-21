@@ -20,8 +20,10 @@ import spacy
 from parlai.core.dict import DictionaryAgent
 
 from .entities import Babi5EntityTracker 
-from .utils import normalize_text, is_silence, is_api_answer, filter_service_words
-from .utils import extract_babi5_template
+from .database import DatabaseSimulator
+from .utils import normalize_text, is_silence, is_api_answer, is_null_api_answer
+from .utils import filter_service_words
+from .utils import extract_babi5_template, iter_babi5_api_response
 
 
 NLP = spacy.load('en')
@@ -38,11 +40,6 @@ class ActionDictionaryAgent(DictionaryAgent):
         group.add_argument(
             '--pretrained-words', type='bool', default=True,
             help='User only words found in provided embedding_file'
-            )
-        group.add_argument(
-            '--action-file',
-            help='if set, the action templates will automatically save' +
-            'to this path during shutdown'
             )
 
     def __init__(self, opt, shared=None):
@@ -63,17 +60,23 @@ class ActionDictionaryAgent(DictionaryAgent):
 
         # action templates
         self.action_templates = []
-        if not shared:
-            if opt.get('action_file') and os.path.isfile(opt['action_file']):
+        if not shared and opt.get('dict_file'):
+            action_file = opt['dict_file'] + '.actions'
+            if os.path.isfile(action_file):
                 # load pre-existing action templates
-                self.load_actions(opt['action_file'])
-            elif opt.get('dict_file') and os.path.isfile(opt['dict_file'] + '.actions'):
-                self.load_actions(opt['dict_file'] + '.actions')
+                self.load_actions(action_file)
+
+        # database
+        self.database = None
+        if not shared and opt.get('dict_file'):
+            database_file = opt['dict_file'] + '.db'
+            self.database = DatabaseSimulator(database_file)
 
         # entity tracker
         self.tracker = Babi5EntityTracker
 
     def tokenize(self, text, **kwargs):
+        """Tokenize with spacy, placing service words as individual tokens."""
         tokens = [t.text for t in NLP.tokenizer(text)]
 
         new_tokens = []
@@ -109,12 +112,17 @@ class ActionDictionaryAgent(DictionaryAgent):
         """
             - Add words passed in the 'text' field of the observation to 
         the dictionary,
-            - extract action templates from all 'label_candidates' once.
+            - extract action templates from all 'label_candidates' once
+            - update database from api responses in 'text' field.
         """
+        # if utterance is an api response, update database
         # if utterance is not <SILENCE> or an api_call response, add to dict
         text = self.observation.get('text')
-        if text and not is_silence(text) and not is_api_answer(text):
-            self.add_to_dict(filter_service_words(self.tokenize(text)))
+        if text:
+            if is_api_answer(text): 
+                self.update_database(text)
+            elif not is_silence(text):
+                self.add_to_dict(filter_service_words(self.tokenize(text)))
 
         # if action_templates not extracted, extract them
         if not self.action_templates:
@@ -126,6 +134,10 @@ class ActionDictionaryAgent(DictionaryAgent):
             self.action_templates = sorted(actions)
 
         return {'id': self.getID()}
+
+    def update_database(self, text):
+        if not is_null_api_answer(text):
+            self.database.insert_many(list(iter_babi5_api_response(text)))
 
     def get_action_id(self, tokens):
         action = extract_babi5_template(tokens)
@@ -142,10 +154,10 @@ class ActionDictionaryAgent(DictionaryAgent):
                 self.action_templates.append(line.strip())
         print('[ num action templates =  %d ]' % len(self.action_templates))
 
-    def save(self, filename=None, action_filename=None, append=False, sort=True):
+    def save(self, filename=None, append=False, sort=True):
         """Save dictionary and actions to outer files."""
         super().save(filename, append=append, sort=sort)
-        self.save_actions(action_filename, append=append)
+        self.save_actions(filename + '.actions', append=append)
 
     def save_actions(self, filename=None, append=False):
         """Save action templates to file.
@@ -153,7 +165,6 @@ class ActionDictionaryAgent(DictionaryAgent):
         
         If ``append`` (default ``False``) is set to ``True``, appends instead of rewriting.
         """
-        filename = filename or self.opt.get('action_file')
         if self.opt.get('dict_file'):
             filename = filename or self.opt['dict_file'] + '.actions'
         if filename is None:

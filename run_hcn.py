@@ -16,7 +16,9 @@ python3 ./utils/train_model.py -t dialog_babi:task:5\
                                --log-every-n-epochs 1\
                                --learning-rate .1\
                                --hidden-dim 128\
-                               --validation-every-n-epochs 5
+                               --validation-every-n-epochs 4\
+                               -dbf true\
+                               --chosen-metric accuracy
 
 # interactive evaluate
 python3 ./utils/interactive.py -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
