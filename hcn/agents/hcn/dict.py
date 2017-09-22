@@ -16,6 +16,7 @@ limitations under the License.
 
 import os
 import spacy
+import string
 
 from parlai.core.dict import DictionaryAgent
 
@@ -93,6 +94,11 @@ class ActionDictionaryAgent(DictionaryAgent):
                 new_tokens.append(t)
         return new_tokens
 
+    def detokenize(self, tokens):
+        return "".join([" " + i \
+                if not i.startswith("'") and i not in string.punctuation else i \
+                for i in tokens]).strip()
+
     def add_to_dict(self, tokens):
         """Build dictionary from the list of provided tokens.
         Only add words contained in self.embedding_words, if not None.
@@ -130,17 +136,22 @@ class ActionDictionaryAgent(DictionaryAgent):
             for cand in self.observation.get('label_candidates'):
                 if cand:
                     tokens = self.tracker.extract_entity_types(self.tokenize(cand))
-                    actions.add(extract_babi5_template(tokens))
+                    actions.add(self.detokenize(extract_babi5_template(tokens)))
             self.action_templates = sorted(actions)
 
         return {'id': self.getID()}
 
     def update_database(self, text):
         if not is_null_api_answer(text):
-            self.database.insert_many(list(iter_babi5_api_response(text)))
+            results = sorted(list(iter_babi5_api_response(text)), 
+                    key=lambda r: r['R_rating'],
+                    reverse=True)
+            self.database.insert_many(results)
+            return results
+        return []
 
     def get_action_id(self, tokens):
-        action = extract_babi5_template(tokens)
+        action = self.detokenize(extract_babi5_template(tokens))
         return self.action_templates.index(action)
 
     def get_action_by_id(self, action_id):

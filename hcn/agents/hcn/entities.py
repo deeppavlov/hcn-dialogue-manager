@@ -43,7 +43,7 @@ class Babi5EntityTracker():
         self.restart()
 
     def restart(self):
-        self.entities = { t: None for t in self.EntType }
+        self.entities = {}
 
     @classmethod
     def entity2type(cls, word):
@@ -70,7 +70,7 @@ class Babi5EntityTracker():
         return new_tokens
 
     def binary_features(self):
-        return np.array( [bool(self.entities[t]) for t in self.EntType], 
+        return np.array( [(t in self.entities) for t in self.EntType], 
                dtype=np.float32 )
 
 # TODO: categorical entity features
@@ -79,7 +79,6 @@ class Babi5EntityTracker():
 
     def fill_entities(self, text):
         for ent_type, value in self.entities.items():
-            if value:
-                text = text.replace(str(ent_type), value)
+            text = text.replace(str(ent_type), value)
         return text
 

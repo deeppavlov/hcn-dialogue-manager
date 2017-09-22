@@ -35,7 +35,9 @@ class HybridCodeNetworkAgent(Agent):
         config.add_cmdline_args(argparser)
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
         argparser.add_argument('--debug', type='bool', default=False,
-                help='Debug output.')
+                help='Print debug output.')
+        argparser.add_argument('--debug-wrong', type='bool', default=False,
+                help='Print debug output.')
 
     @staticmethod
     def dictionary_class():
@@ -98,7 +100,7 @@ class HybridCodeNetworkAgent(Agent):
         if 'labels' in self.observation:
 
             loss, pred = self.model.update(*ex)
-            pred_text = self.word_dict.get_action_by_id(pred)
+            pred_text = self._generate_response(pred)
 
             # update metrics
             self.metrics.n_examples += 1
@@ -108,6 +110,9 @@ class HybridCodeNetworkAgent(Agent):
             self.metrics.conf_matrix[pred, ex[1]] += 1
             self.metrics.n_train_corr_examples += \
                     int(pred_text == self.observation['labels'][0])
+            if self.opt['debug_wrong'] and (pred_text != self.observation['labels'][0]):
+                print("True: '{}'\nPredicted: '{}'"\
+                        .format(self.observation['labels'][0], pred_text))
 #TODO: update number of correct dialogs
         else:
             if self.opt['debug']:
@@ -136,13 +141,9 @@ class HybridCodeNetworkAgent(Agent):
  
         # store database results
         if is_api_answer(ex['text']):
-            self.word_dict.update_database(ex['text'])
-            entities = {k: v for k, v in self.ent_tracker.entities.items() if v}
-            self.database_results = self.word_dict.database.search(entities,
-                    order_by='R_rating', ascending=False)
-            self.current_result = self.database_results.pop(0)
-            if opt.get('debug'):
-                print("API best response = ", self.current_result)
+            self.database_results = self.word_dict.update_database(ex['text'])
+            if self.opt['debug']:
+                print("Parsed api result = ", self.database_results)
 
         # Bag of words features
         bow_features = np.zeros(len(self.word_dict), dtype=np.float32)
@@ -193,6 +194,19 @@ class HybridCodeNetworkAgent(Agent):
 
     def _generate_response(self, action_id):
         """Convert action template id and entities from tracker to final response."""
+        # is api request
+        if action_id == 1:
+            self.database_results = self.word_dict.database.search(
+                    self.ent_tracker.entities,
+                    order_by='R_rating', ascending=False)
+            if self.opt['debug']:
+                print("DatabaseSimulator results = ", self.database_results)
+        # is restaurant offering
+        if (action_id == 12) and self.database_results:
+            self.current_result = self.database_results.pop(0)
+            if self.opt['debug']:
+                print("API best response = ", self.current_result)
+
         template = self.word_dict.get_action_by_id(action_id)
         if self.current_result is not None:
             for k, v in self.current_result.items():

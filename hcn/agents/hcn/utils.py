@@ -57,14 +57,16 @@ def extract_babi5_template(tokens):
                 template.append('resto_')
         else:
             template.append(token)
-    return ' '.join(template)
+    return template
 
 
 def iter_babi5_api_response(text):
     info = {}
     for ln in text.split('\n'):
         tokens = ln.split()
-        if is_silence(ln) or (len(tokens) != 3):
+        if is_silence(ln):
+            yield info
+        if (len(tokens) != 3):
             return
         rest, prop, value = tokens
         value = int(value) if value.isdecimal() else value
