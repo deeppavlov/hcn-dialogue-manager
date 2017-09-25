@@ -42,25 +42,30 @@ def filter_service_words(tokens):
     return filter(lambda t: '_' not in t, tokens)
 
 # ------------------------------------------------------------------------------
-# Babi5 specific utilities.
+# Babi5&Babi6 specific utilities.
 # ------------------------------------------------------------------------------
 
-def extract_babi5_template(tokens):
-    template = []
-    for token in tokens:
-        if 'resto_' in token: 
-            if 'phone' in token:
-                template.append('R_phone')
-            elif 'address' in token:
-                template.append('R_address')
-            else:
-                template.append('resto_')
-        else:
-            template.append(token)
-    return template
+def babi6_dirty_fix(text):
+    """Fix some inconsistencies in DSTC2 data preparation."""
+    return text.replace('the cow pizza kitchen and bar', 'the_cow_pizza_kitchen')\
+            .replace('the good luck', 'the_good_luck')\
+            .replace('the river bar', 'the_river_bar')\
+            .replace(' Fen Ditton', '')\
+            .replace(' and grill', '')\
+            .replace(' food takeaway', '')\
+            .replace('ask is', 'R_name is')\
+            .replace('ask serves', 'R_name serves')\
+            .replace('01223 323737', 'R_phone')\
+            .replace('C.B 2, 1 U.F', 'R_post_code')\
+            .replace('C.B 1, 3 N.F', 'R_post_code')\
+            .replace('C.B 2, 1 D.P', 'R_post_code')\
+            .replace('C.B 4, 3 L.E', 'R_post_code')\
+            .replace('108 Regent Street City Centre', 'R_address')\
+            .replace('17 Magdalene Street City Centre', 'R_address')\
+            .replace('529 Newmarket Road', 'R_address')\
+            .replace('7 Milton Road Chesterton', 'R_address')\
 
-
-def iter_babi5_api_response(text):
+def iter_api_response(text):
     info = {}
     for ln in text.split('\n'):
         tokens = ln.split()
@@ -71,14 +76,10 @@ def iter_babi5_api_response(text):
         rest, prop, value = tokens
         value = int(value) if value.isdecimal() else value
         if not info:
-            info['resto_'] = rest
-        if info['resto_'] == rest: 
+            info['R_name'] = rest
+        if info['R_name'] == rest: 
             info[prop] = value
         else:
             yield info
-            info = {'resto_': rest, prop: value}
-
-#TODO: filling of restaurant info
-def is_babi5_restaurant(word):
-    return word.startswith('resto_')
+            info = {'R_name': rest, prop: value}
 

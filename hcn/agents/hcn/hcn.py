@@ -22,9 +22,9 @@ from parlai.core.agents import Agent
 from . import config
 from .model import HybridCodeNetworkModel
 from .dict import ActionDictionaryAgent
-from .entities import Babi5EntityTracker
-from .utils import normalize_text, extract_babi5_template
-from .utils import is_silence, is_null_api_answer, is_api_answer, is_babi5_restaurant
+from .entities import Babi5EntityTracker, Babi6EntityTracker
+from .utils import normalize_text
+from .utils import is_silence, is_null_api_answer, is_api_answer
 from .metrics import DialogMetrics
 
 
@@ -38,6 +38,9 @@ class HybridCodeNetworkAgent(Agent):
                 help='Print debug output.')
         argparser.add_argument('--debug-wrong', type='bool', default=False,
                 help='Print debug output.')
+        argparser.add_argument('--tracker', required=True, 
+                choices=['babi5', 'babi6'],
+                help='Type of entity tracker to use. Implemented only for dialog_babi5 and dialog_babi6.')
 
     @staticmethod
     def dictionary_class():
@@ -61,7 +64,11 @@ class HybridCodeNetworkAgent(Agent):
         self.word_dict = HybridCodeNetworkAgent.dictionary_class()(opt)
 
         # initialize entity tracker
-        self.ent_tracker = Babi5EntityTracker()
+        self.ent_tracker = None
+        if self.opt['tracker'] == 'babi5':
+            self.ent_tracker = Babi5EntityTracker()
+        elif self.opt['tracker'] == 'babi6':
+            self.ent_tracker = Babi6EntityTracker()
 
         # intialize parameters
         self.is_shared = False
@@ -101,6 +108,8 @@ class HybridCodeNetworkAgent(Agent):
 
             loss, pred = self.model.update(*ex)
             pred_text = self._generate_response(pred)
+            label_text = self.observation['labels'][0]
+            label_text = self.word_dict.detokenize(label_text.split())
 
             # update metrics
             self.metrics.n_examples += 1
@@ -108,11 +117,9 @@ class HybridCodeNetworkAgent(Agent):
                 self.metrics.n_dialogs += 1
             self.metrics.train_loss += loss
             self.metrics.conf_matrix[pred, ex[1]] += 1
-            self.metrics.n_train_corr_examples += \
-                    int(pred_text == self.observation['labels'][0])
-            if self.opt['debug_wrong'] and (pred_text != self.observation['labels'][0]):
-                print("True: '{}'\nPredicted: '{}'"\
-                        .format(self.observation['labels'][0], pred_text))
+            self.metrics.n_train_corr_examples += int(pred_text == label_text)
+            if self.opt['debug_wrong'] and (pred_text != label_text) and pred != 6:
+                print("True: '{}'\nPredicted: '{}'".format(label_text, pred_text))
 #TODO: update number of correct dialogs
         else:
             if self.opt['debug']:
@@ -120,7 +127,7 @@ class HybridCodeNetworkAgent(Agent):
             probs, pred = self.model.predict(*ex)
             if self.opt['debug']:
                 print("Probs = {}, pred = {}".format(probs, pred))
-                print("Entities = ", self.ent_tracker.entities.values())
+                print("Entities = ", self.ent_tracker.tracked.values())
             reply['text'] = self._generate_response(pred)
 
         return reply
@@ -141,7 +148,7 @@ class HybridCodeNetworkAgent(Agent):
  
         # store database results
         if is_api_answer(ex['text']):
-            self.database_results = self.word_dict.update_database(ex['text'])
+            self.word_dict.update_database(ex['text'])
             if self.opt['debug']:
                 print("Parsed api result = ", self.database_results)
 
@@ -197,7 +204,7 @@ class HybridCodeNetworkAgent(Agent):
         # is api request
         if action_id == 1:
             self.database_results = self.word_dict.database.search(
-                    self.ent_tracker.entities,
+                    self.ent_tracker.tracked,
                     order_by='R_rating', ascending=False)
             if self.opt['debug']:
                 print("DatabaseSimulator results = ", self.database_results)

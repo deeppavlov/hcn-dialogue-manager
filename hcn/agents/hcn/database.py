@@ -26,7 +26,7 @@ class DatabaseSimulator(object):
 
     def create_table(self, fields, types, tname='restaurants'):
         self.fields = fields
-        f_types = ('{} {} primary key'.format(f, t) if f == 'resto_' \
+        f_types = ('{} {} primary key'.format(f, t) if f == 'R_name' \
                 else '{} {}'.format(f, t) \
                 for f, t in zip(fields, types))
         self.cursor.execute('CREATE TABLE IF NOT EXISTS {} ({})'\
@@ -37,9 +37,9 @@ class DatabaseSimulator(object):
                 " AND name='{}';".format(tname))
         return bool(self.cursor.fetchall())
 
-    def _check_if_resto_exists(self, resto_, tname='restaurants'):
+    def _check_if_resto_exists(self, name, tname='restaurants'):
         return bool(self.cursor.execute(
-            "SELECT EXISTS(SELECT 1 FROM {} WHERE resto_='{}')".format(tname, resto_)\
+            "SELECT EXISTS(SELECT 1 FROM {} WHERE R_name='{}')".format(tname, name)\
                     ).fetchone()[0])
 
     def insert_one(self, restaurant, tname='restaurants'):
@@ -51,14 +51,11 @@ class DatabaseSimulator(object):
             types = ('integer' if type(restaurant[f]) == int else 'text'\
                     for f in fields)
             self.create_table(fields, types)
-        if set(restaurant.keys()) != set(self.fields):
-            print("DatabaseSimulator error: restaurant should have the"\
-                    "following properties ({})".format(self.fields))
-            return
+
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
-        if not self._check_if_resto_exists(restaurant['resto_']):
+        if not self._check_if_resto_exists(restaurant['R_name']):
             self.cursor.execute('INSERT into {} VALUES {}'.format(tname, fformat),
-                    [restaurant[f] for f in self.fields])
+                    [restaurant.get(f, 'UNK') for f in self.fields])
             self.conn.commit()
 
     def insert_many(self, restaurants, tname='restaurants'):
@@ -70,17 +67,15 @@ class DatabaseSimulator(object):
             types = ('integer' if type(restaurants[0][f]) == int else 'text'\
                     for f in fields)
             self.create_table(fields, types)
-        if set(restaurants[0].keys()) != set(self.fields):
-            print("DatabaseSimulator error: restaurant should have the"\
-                    "following properties ({})".format(self.fields))
-            return
+
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
         restaurants = [r for r in restaurants \
-                if not self._check_if_resto_exists(r['resto_'])]
+                if not self._check_if_resto_exists(r['R_name'])]
         if restaurants:
             self.cursor.executemany('INSERT into {} VALUES {}'\
                     .format(tname, fformat),
-                    [[r[f] for f in self.fields] for r in restaurants])
+                    [[r.get(f, 'UNK') for f in self.fields] for r in restaurants])
+# TODO: support search for restaurants with unknown prop values
             self.conn.commit()
 
     def get_field_names(self, tname='restaurants'):

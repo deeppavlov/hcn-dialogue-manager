@@ -17,14 +17,15 @@ limitations under the License.
 import os
 import spacy
 import string
+import re
 
 from parlai.core.dict import DictionaryAgent
 
-from .entities import Babi5EntityTracker 
+from .entities import Babi5EntityTracker, Babi6EntityTracker 
 from .database import DatabaseSimulator
-from .utils import normalize_text, is_silence, is_api_answer, is_null_api_answer
-from .utils import filter_service_words
-from .utils import extract_babi5_template, iter_babi5_api_response
+from .utils import normalize_text, filter_service_words
+from .utils import is_silence, is_api_answer, is_null_api_answer, iter_api_response
+from .utils import babi6_dirty_fix
 
 
 NLP = spacy.load('en')
@@ -32,7 +33,7 @@ NLP = spacy.load('en')
 
 class ActionDictionaryAgent(DictionaryAgent):
     """Override DictionaryAgent to user spaCy tokenizer, ignore labels
-    and count also actions.
+    and also count actions.
     """
 
     @staticmethod
@@ -74,30 +75,31 @@ class ActionDictionaryAgent(DictionaryAgent):
             self.database = DatabaseSimulator(database_file)
 
         # entity tracker
-        self.tracker = Babi5EntityTracker
+        self.tracker = Babi6EntityTracker #Babi5EntityTracker
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""
-        tokens = [t.text for t in NLP.tokenizer(text)]
+        if self.opt['tracker'] == 'babi6':
+            text = babi6_dirty_fix(text)
+        text = text.replace('<SILENCE>', '_SILENCE_')
 
-        new_tokens = []
-        opening_i = None
-        for i, t in enumerate(tokens):
-            if t == '<':
-                opening_i = i
-            elif opening_i is not None:
-                if t == '>':
-                    bracket_expr = '<' + ' '.join(tokens[opening_i+1:i]) + '>'
-                    new_tokens.append(bracket_expr)
-                    opening_i = None
-            else:
-                new_tokens.append(t)
-        return new_tokens
+        return [t.text for t in NLP.tokenizer(text)]
 
     def detokenize(self, tokens):
-        return "".join([" " + i \
-                if not i.startswith("'") and i not in string.punctuation else i \
-                for i in tokens]).strip()
+        """
+        Detokenizing a text undoes the tokenizing operation, restoring
+        punctuation and spaces to the places that people expect them to be.
+        Ideally, `detokenize(tokenize(text))` should be identical to `text`,
+        except for line breaks.
+        """
+        text = ' '.join(tokens)
+        step1 = text.replace("`` ", '"').replace(" ''", '"').replace('. . .',  '...')
+        step2 = step1.replace(" ( ", " (").replace(" ) ", ") ")
+        step3 = re.sub(r' ([.,:;?!%]+)([ \'"`])', r"\1\2", step2)
+        step4 = re.sub(r' ([.,:;?!%]+)$', r"\1", step3)
+        step5 = step4.replace(" '", "'").replace(" n't", "n't").replace(" nt", "nt").replace("can not", "cannot")
+        step6 = step5.replace(" ` ", " '")
+        return step6.strip()
 
     def add_to_dict(self, tokens):
         """Build dictionary from the list of provided tokens.
@@ -136,23 +138,19 @@ class ActionDictionaryAgent(DictionaryAgent):
             for cand in self.observation.get('label_candidates'):
                 if cand:
                     tokens = self.tracker.extract_entity_types(self.tokenize(cand))
-                    actions.add(self.detokenize(extract_babi5_template(tokens)))
+                    actions.add(self.detokenize(tokens))
             self.action_templates = sorted(actions)
 
         return {'id': self.getID()}
 
     def update_database(self, text):
         if not is_null_api_answer(text):
-            results = sorted(list(iter_babi5_api_response(text)), 
-                    key=lambda r: r['R_rating'],
-                    reverse=True)
-            self.database.insert_many(results)
-            return results
-        return []
+            self.database.insert_many(list(iter_api_response(text))) 
 
     def get_action_id(self, tokens):
-        action = self.detokenize(extract_babi5_template(tokens))
-        return self.action_templates.index(action)
+        action = self.detokenize(self.tracker.extract_entity_types(tokens))
+        action_id = self.action_templates.index(action) 
+        return action_id if action_id != 19 else 6
 
     def get_action_by_id(self, action_id):
         return self.action_templates[action_id]
