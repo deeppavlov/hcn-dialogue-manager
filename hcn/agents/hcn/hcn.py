@@ -75,13 +75,17 @@ class HybridCodeNetworkAgent(Agent):
         self.database_results = []
         self.current_result = None
         self.n_actions = len(self.word_dict.action_templates)
+        self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
+# TODO: flag that inidicates whether api was called during last response
+        self.api_called, self.api_just_called = False, False
 
         # initialize metrics
         self.metrics = DialogMetrics(self.n_actions)
 
         opt['action_size'] = self.n_actions
-# TODO: train not only on bow and binary entity features
-        opt['obs_size'] = 3 + len(self.word_dict) + self.ent_tracker.num_features 
+# TODO: enrich features
+        opt['obs_size'] = 7 + len(self.word_dict) + \
+                self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt) 
 
@@ -107,6 +111,9 @@ class HybridCodeNetworkAgent(Agent):
         if 'labels' in self.observation:
 
             loss, pred = self.model.update(*ex)
+            self.prev_action *= 0.
+            self.prev_action[pred] = 1.
+
             pred_text = self._generate_response(pred)
             label_text = self.observation['labels'][0]
             label_text = self.word_dict.detokenize(label_text.split())
@@ -125,6 +132,8 @@ class HybridCodeNetworkAgent(Agent):
             if self.opt['debug']:
                 print("Example = ", ex)
             probs, pred = self.model.predict(*ex)
+            self.prev_action *= 0.
+            self.prev_action[pred] = 1.
             if self.opt['debug']:
                 print("Probs = {}, pred = {}".format(probs, pred))
                 print("Entities = ", self.ent_tracker.tracked.values())
@@ -142,6 +151,8 @@ class HybridCodeNetworkAgent(Agent):
             self.ent_tracker.restart()
             self.database_results = []
             self.current_result = None
+            self.prev_action *= 0.
+            self.api_called, self.api_just_called = False, False
 
         # tokenize input
         tokens = self.word_dict.tokenize(ex['text'])
@@ -150,6 +161,7 @@ class HybridCodeNetworkAgent(Agent):
         if is_api_answer(ex['text']):
             self.word_dict.update_database(ex['text'])
             if self.opt['debug']:
+                print("Parsing '{}'".format(ex['text']))
                 print("Parsed api result = ", self.database_results)
 
         # Bag of words features
@@ -157,19 +169,30 @@ class HybridCodeNetworkAgent(Agent):
         for t in tokens:
             bow_features[self.word_dict[t]] = 1.
         # Text entity features
-        self.ent_tracker.update_entities(tokens)
+        if not is_api_answer(ex['text']):
+            self.ent_tracker.update_entities(tokens)
         ent_features = self.ent_tracker.binary_features()
         if self.opt['debug']:
             print("Bow feats shape = {}, ent feats shape = {}".format(
                 bow_features.shape, ent_features.shape))
         # Other features
-        context_features = np.array(
-                [is_silence(ex['text']),
-                    is_api_answer(ex['text']),
-                    is_null_api_answer(ex['text'])], 
-                dtype=np.float32)
-        features = np.hstack((bow_features, ent_features, context_features))\
-                [np.newaxis, :]
+        context_features = np.array([
+            is_silence(ex['text']),
+            self.api_just_called * 1.,
+            (self.api_just_called and bool(self.database_results)) * 1.,
+            (self.api_just_called and not self.database_results) * 1.,
+            self.api_called * 1.,
+            bool(self.database_results) * 1.,
+            (not self.database_results) * 1.
+            #is_api_answer(ex['text']),
+            #is_null_api_answer(ex['text'])],
+            ], dtype=np.float32)
+        if self.opt['debug']:
+            print("Entities = ", self.ent_tracker.tracked.values())
+            print("Context features = ", context_features)
+        features = np.hstack((
+            bow_features, ent_features, context_features, self.prev_action
+            ))[np.newaxis, :]
         if self.opt['debug']:
             print("Feats shape = ", features.shape)
         
@@ -189,8 +212,6 @@ class HybridCodeNetworkAgent(Agent):
                 raise RuntimeError('Invalid label. Should match one of action templates from train.')
             targets.append((label, action))
         # in case of prediction do not return action
-        if self.opt['debug']:
-            print("Targets = ", targets)
         if not targets:
             return (features, action_mask)
 
@@ -201,20 +222,27 @@ class HybridCodeNetworkAgent(Agent):
 
     def _generate_response(self, action_id):
         """Convert action template id and entities from tracker to final response."""
+        template = self.word_dict.get_action_by_id(action_id)
+
         # is api request
-        if action_id == 1:
+        if 'api_call' in template:
             self.database_results = self.word_dict.database.search(
                     self.ent_tracker.tracked,
                     order_by='R_rating', ascending=False)
+            self.api_just_called, self.api_called = True, True
             if self.opt['debug']:
                 print("DatabaseSimulator results = ", self.database_results)
+            if self.database_results and (self.opt['tracker'] == 'babi6'):
+                self.current_result = self.database_results.pop(0)
+        else:
+            self.api_just_called = False
         # is restaurant offering
-        if (action_id == 12) and self.database_results:
-            self.current_result = self.database_results.pop(0)
-            if self.opt['debug']:
-                print("API best response = ", self.current_result)
+        if self.database_results:
+            if (self.opt['tracker'] == 'babi5') and (action_id == 12):
+                self.current_result = self.database_results.pop(0)
+                if self.opt['debug']:
+                    print("API best response = ", self.current_result)
 
-        template = self.word_dict.get_action_by_id(action_id)
         if self.current_result is not None:
             for k, v in self.current_result.items():
                 template = template.replace(k, str(v)) 

@@ -18,10 +18,12 @@ python3 ./utils/train_model.py -t dialog_babi:task:5\
                                --hidden-dim 128\
                                --validation-every-n-epochs 4\
                                -dbf true\
-                               --chosen-metric accuracy
+                               --chosen-metric accuracy\
+                               --tracker babi5
 
 # interactive evaluate
 python3 ./utils/interactive.py -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
                                --pretrained-model ./build/hcn-91700\
-                               --dict-file ./build/hcn.dict
+                               --dict-file ./build/hcn.dict\
+                               --tracker babi5
 
