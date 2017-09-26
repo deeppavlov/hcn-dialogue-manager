@@ -41,6 +41,12 @@ class DatabaseSimulator(object):
         return bool(self.cursor.execute(
             "SELECT EXISTS(SELECT 1 FROM {} WHERE R_name='{}')".format(tname, name)\
                     ).fetchone()[0])
+        
+    def _update_one(self, name, info, tname='restaurants'):
+        set_expr = ', '.join(["{} = '{}'".format(f, v) \
+                for f, v in info.items() if f != 'R_name'])
+        where_expr = "R_name = '{}'".format(name)
+        self.cursor.execute("UPDATE {} SET {} WHERE {};".format(tname, set_expr, where_expr))
 
     def insert_one(self, restaurant, tname='restaurants'):
         if not restaurant:
@@ -53,10 +59,12 @@ class DatabaseSimulator(object):
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
-        if not self._check_if_resto_exists(restaurant['R_name']):
+        if self._check_if_resto_exists(restaurant['R_name']):
+            self._update_one(restaurant['R_name'], restaurant)
+        else:
             self.cursor.execute('INSERT into {} VALUES {}'.format(tname, fformat),
                     [restaurant.get(f, 'UNK') for f in self.fields])
-            self.conn.commit()
+        self.conn.commit()
 
     def insert_many(self, restaurants, tname='restaurants'):
         if not restaurants or type(restaurants) is not list:
@@ -69,14 +77,17 @@ class DatabaseSimulator(object):
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
-        restaurants = [r for r in restaurants \
-                if not self._check_if_resto_exists(r['R_name'])]
-        if restaurants:
+        r_to_insert = []
+        for r in restaurants:
+            if not self._check_if_resto_exists(r['R_name']):
+                r_to_insert.append(r)
+            else:
+                self._update_one(r['R_name'], r)
+        if r_to_insert:
             self.cursor.executemany('INSERT into {} VALUES {}'\
                     .format(tname, fformat),
-                    [[r.get(f, 'UNK') for f in self.fields] for r in restaurants])
-# TODO: support search for restaurants with unknown prop values
-            self.conn.commit()
+                    [[r.get(f, 'UNK') for f in self.fields] for r in r_to_insert])
+        self.conn.commit()
 
     def get_field_names(self, tname='restaurants'):
         self.cursor.execute('PRAGMA table_info({});'.format(tname))
