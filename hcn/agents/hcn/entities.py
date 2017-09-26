@@ -30,6 +30,7 @@ class EntityTracker():
 
     @property
     def num_features(self):
+        return 2 * len(self.tracked_types)
         return len(self.tracked_types)
 
     def __init__(self):
@@ -37,6 +38,11 @@ class EntityTracker():
 
     def restart(self):
         self.tracked = {}
+        self.last_tracked = {}
+
+    @property
+    def entities(self):
+        return {str(t): v for t, v in self.tracked.items()}
 
     @classmethod
     def extract_entity_types(cls, tokens):
@@ -48,15 +54,18 @@ class EntityTracker():
 
     def update_entities(self, tokens):
         new_tokens = []
+        self.last_tracked = {}
         for token in tokens:
             ent_type = self.entity2type(token)
-            if ent_type is not None:
-                self.tracked[ent_type] = token
+            if ent_type in self.tracked_types:
+                self.last_tracked[ent_type] = token
             new_tokens.append(str(ent_type or token))
+        self.tracked.update(self.last_tracked)
         return new_tokens
 
     def binary_features(self):
-        return np.array( [(t in self.tracked) for t in self.tracked_types], 
+        return np.array( [(t in self.tracked) for t in self.tracked_types] + \
+                [(self.last_tracked.get(t) != self.tracked.get(t)) * 1 for t in self.tracked_types], 
                 dtype=np.float32 )
 
     def categ_features(self):

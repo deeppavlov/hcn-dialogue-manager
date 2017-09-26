@@ -84,7 +84,7 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 7 + len(self.word_dict) + \
+        opt['obs_size'] = 10 + len(self.word_dict) + \
                 self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt) 
@@ -136,7 +136,7 @@ class HybridCodeNetworkAgent(Agent):
             self.prev_action[pred] = 1.
             if self.opt['debug']:
                 print("Probs = {}, pred = {}".format(probs, pred))
-                print("Entities = ", self.ent_tracker.tracked.values())
+                print("Entities = ", self.ent_tracker.entities.values())
             reply['text'] = self._generate_response(pred)
 
         return reply
@@ -153,16 +153,17 @@ class HybridCodeNetworkAgent(Agent):
             self.current_result = None
             self.prev_action *= 0.
             self.api_called, self.api_just_called = False, False
+            if self.opt['debug']:
+                print("----episode done----")
 
         # tokenize input
         tokens = self.word_dict.tokenize(ex['text'])
  
         # store database results
-        if is_api_answer(ex['text']):
+        if is_api_answer(ex['text']) and not is_null_api_answer(ex['text']):
             self.word_dict.update_database(ex['text'])
             if self.opt['debug']:
-                print("Parsing '{}'".format(ex['text']))
-                print("Parsed api result = ", self.database_results)
+                print("Updating database with api response: ", ex['text'])
 
         # Bag of words features
         bow_features = np.zeros(len(self.word_dict), dtype=np.float32)
@@ -170,7 +171,12 @@ class HybridCodeNetworkAgent(Agent):
             bow_features[self.word_dict[t]] = 1.
         # Text entity features
         if not is_api_answer(ex['text']):
+            if self.opt['debug']:
+                print("Text = ", ex['text'])
+                print("Updating entities, old = ", self.ent_tracker.entities.values())
             self.ent_tracker.update_entities(tokens)
+            if self.opt['debug']:
+                print("Updating entities, new = ", self.ent_tracker.entities.values())
         ent_features = self.ent_tracker.binary_features()
         if self.opt['debug']:
             print("Bow feats shape = {}, ent feats shape = {}".format(
@@ -178,17 +184,22 @@ class HybridCodeNetworkAgent(Agent):
         # Other features
         context_features = np.array([
             is_silence(ex['text']),
+            sum(ent_features[:len(ent_features) // 2]),
+            sum(ent_features[-len(ent_features) // 2:]),
+            bool(self.word_dict.database.search(self.ent_tracker.entities)) * 1.,
             self.api_just_called * 1.,
-            (self.api_just_called and bool(self.database_results)) * 1.,
-            (self.api_just_called and not self.database_results) * 1.,
+            (self.api_just_called and bool(self.current_result)) * 1.,
+            (self.api_just_called and not self.current_result) * 1.,
             self.api_called * 1.,
-            bool(self.database_results) * 1.,
-            (not self.database_results) * 1.
+            bool(self.current_result) * 1.,
+            (self.api_called and not self.current_result) * 1.
             #is_api_answer(ex['text']),
             #is_null_api_answer(ex['text'])],
             ], dtype=np.float32)
         if self.opt['debug']:
-            print("Entities = ", self.ent_tracker.tracked.values())
+            print("Entities = ", self.ent_tracker.entities.values())
+            print("Entity features = ", ent_features)
+            print("Current result =", self.current_result)
             print("Context features = ", context_features)
         features = np.hstack((
             bow_features, ent_features, context_features, self.prev_action
@@ -227,25 +238,26 @@ class HybridCodeNetworkAgent(Agent):
         # is api request
         if 'api_call' in template:
             self.database_results = self.word_dict.database.search(
-                    self.ent_tracker.tracked,
+                    self.ent_tracker.entities,
                     order_by='R_rating', ascending=False)
             self.api_just_called, self.api_called = True, True
             if self.opt['debug']:
+                print("Looking for {} in database.".format(self.ent_tracker.entities))
                 print("DatabaseSimulator results = ", self.database_results)
             if self.database_results and (self.opt['tracker'] == 'babi6'):
                 self.current_result = self.database_results.pop(0)
         else:
             self.api_just_called = False
+            if self.current_result is not None:
+                for k, v in self.current_result.items():
+                    template = template.replace(k, str(v)) 
         # is restaurant offering
         if self.database_results:
             if (self.opt['tracker'] == 'babi5') and (action_id == 12):
                 self.current_result = self.database_results.pop(0)
                 if self.opt['debug']:
                     print("API best response = ", self.current_result)
-
-        if self.current_result is not None:
-            for k, v in self.current_result.items():
-                template = template.replace(k, str(v)) 
+        
         return self.ent_tracker.fill_entities(template) 
 
     def report(self):
