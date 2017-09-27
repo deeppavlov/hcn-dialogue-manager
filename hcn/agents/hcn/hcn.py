@@ -173,6 +173,7 @@ class HybridCodeNetworkAgent(Agent):
         for t in tokens:
             bow_features[self.word_dict[t]] = 1.
         # Text entity features
+        prev_entities = self.ent_tracker.categ_features()
         if not is_api_answer(ex['text']):
             if self.opt['debug']:
                 print("Text = ", ex['text'])
@@ -180,7 +181,10 @@ class HybridCodeNetworkAgent(Agent):
             self.ent_tracker.update_entities(tokens)
             if self.opt['debug']:
                 print("Updating entities, new = ", self.ent_tracker.entities.values())
-        ent_features = self.ent_tracker.binary_features()
+        new_entities = self.ent_tracker.categ_features()
+        binary_features = self.ent_tracker.binary_features()
+        diff_features = np.array(prev_entities != new_entities, dtype=np.float32)
+        ent_features = np.hstack((binary_features, diff_features))
         if self.opt['debug']:
             print("Bow feats shape = {}, ent feats shape = {}".format(
                 bow_features.shape, ent_features.shape))
