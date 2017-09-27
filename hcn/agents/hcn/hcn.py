@@ -16,6 +16,7 @@ limitations under the License.
 
 import copy
 import numpy as np
+import re
 
 from parlai.core.agents import Agent
 
@@ -41,6 +42,8 @@ class HybridCodeNetworkAgent(Agent):
         argparser.add_argument('--tracker', required=True, 
                 choices=['babi5', 'babi6'],
                 help='Type of entity tracker to use. Implemented only for dialog_babi5 and dialog_babi6.')
+        argparser.add_argument('--action-mask', type='bool', default=False,
+                help='Use action mask to put constrains on actions.')
 
     @staticmethod
     def dictionary_class():
@@ -207,8 +210,18 @@ class HybridCodeNetworkAgent(Agent):
         if self.opt['debug']:
             print("Feats shape = ", features.shape)
         
-# TODO: non ones action mask
+        # constructing mask of allowed actions
         action_mask = np.ones(self.n_actions, dtype=np.float32)
+        if self.opt['action_mask']:
+            for a_id in range(self.n_actions):
+                action = self.word_dict.get_action_by_id(a_id)
+                if 'api_call' not in action:
+                    for entity in re.findall('R_[a-z]*', action):
+                        if (entity not in self.ent_tracker.entities) and \
+                                (entity not in (self.current_result or {})):
+                            action_mask[a_id] = 0.
+                            #if self.opt['debug']:
+                            #    print("Action '{}' not allowed.".format(action))
         if self.opt['debug']:
             print("Action_mask shape = ", action_mask.shape)
        
