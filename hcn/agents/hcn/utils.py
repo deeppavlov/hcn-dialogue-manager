@@ -48,11 +48,9 @@ def filter_service_words(tokens):
 def babi6_dirty_fix(text):
     """Fix some inconsistencies in DSTC2 data preparation."""
     return text.replace('the cow pizza kitchen and bar', 'the_cow_pizza_kitchen')\
-            .replace('the good luck', 'the_good_luck')\
-            .replace('the river bar', 'the_river_bar')\
+            .replace('the good luck chinese food takeaway', 'the_good_luck')\
+            .replace('the river bar steakhouse and grill', 'the_river_bar')\
             .replace(' Fen Ditton', '')\
-            .replace(' and grill', '')\
-            .replace(' food takeaway', '')\
             .replace('ask is', 'R_name is')\
             .replace('ask serves', 'R_name serves')\
             .replace('01223 323737', 'R_phone')\

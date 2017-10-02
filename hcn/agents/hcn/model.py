@@ -201,13 +201,15 @@ class HybridCodeNetworkModel(object):
             - parameters and state in <fname>.json
         """
         step = tf.train.global_step(self._sess, self._step)
-        meta_fname = "{}-{}.meta".format(fname, step)
-        json_fname = "{}-{}.json".format(fname, step)
+        #meta_fname = "{}-{}.meta".format(fname, step)
+        #json_fname = "{}-{}.json".format(fname, step)
+        meta_fname = fname + '.meta'
+        json_fname = fname + '.json'
 
         # save graph
         print("[saving graph to {}]".format(meta_fname))
         _saver = tf.train.Saver()
-        _saver.save(self._sess, fname, global_step=step)
+        _saver.save(self._sess, fname)#, global_step=step)
         
         # save state and options
         print("[saving options to {}]".format(json_fname))

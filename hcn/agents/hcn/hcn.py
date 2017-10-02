@@ -87,8 +87,8 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 10 + len(self.word_dict) + \
-                self.ent_tracker.num_features + self.n_actions
+        opt['obs_size'] = 11 + len(self.word_dict) + \
+                2 * self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt) 
 
@@ -128,7 +128,7 @@ class HybridCodeNetworkAgent(Agent):
             self.metrics.train_loss += loss
             self.metrics.conf_matrix[pred, ex[1]] += 1
             self.metrics.n_train_corr_examples += int(pred_text == label_text)
-            if self.opt['debug_wrong'] and (pred_text != label_text) and pred != 6:
+            if self.opt['debug_wrong'] and (pred_text != label_text):
                 print("True: '{}'\nPredicted: '{}'".format(label_text, pred_text))
 #TODO: update number of correct dialogs
         else:
@@ -139,7 +139,6 @@ class HybridCodeNetworkAgent(Agent):
             self.prev_action[pred] = 1.
             if self.opt['debug']:
                 print("Probs = {}, pred = {}".format(probs, pred))
-                print("Entities = ", self.ent_tracker.entities.values())
             reply['text'] = self._generate_response(pred)
 
         return reply
@@ -189,11 +188,14 @@ class HybridCodeNetworkAgent(Agent):
             print("Bow feats shape = {}, ent feats shape = {}".format(
                 bow_features.shape, ent_features.shape))
         # Other features
+        curr_cuisine = self.ent_tracker.entities.get('R_cuisine', '')
         context_features = np.array([
             is_silence(ex['text']),
-            sum(ent_features[:len(ent_features) // 2]),
-            sum(ent_features[-len(ent_features) // 2:]),
+            sum(binary_features),
+            sum(diff_features),
             bool(self.word_dict.database.search(self.ent_tracker.entities)) * 1.,
+            bool(self.word_dict.database.search(
+                {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
             self.api_just_called * 1.,
             (self.api_just_called and bool(self.current_result)) * 1.,
             (self.api_just_called and not self.current_result) * 1.,
@@ -204,7 +206,7 @@ class HybridCodeNetworkAgent(Agent):
             #is_null_api_answer(ex['text'])],
             ], dtype=np.float32)
         if self.opt['debug']:
-            print("Entities = ", self.ent_tracker.entities.values())
+            print("Entities = ", self.ent_tracker.entities)
             print("Entity features = ", ent_features)
             print("Current result =", self.current_result)
             print("Context features = ", context_features)
@@ -220,7 +222,7 @@ class HybridCodeNetworkAgent(Agent):
             for a_id in range(self.n_actions):
                 action = self.word_dict.get_action_by_id(a_id)
                 if 'api_call' not in action:
-                    for entity in re.findall('R_[a-z]*', action):
+                    for entity in re.findall('R_[a-z_]*', action):
                         if (entity not in self.ent_tracker.entities) and \
                                 (entity not in (self.current_result or {})):
                             action_mask[a_id] = 0.
@@ -245,6 +247,10 @@ class HybridCodeNetworkAgent(Agent):
 
         # take only first label
         action = targets[0][1]
+        if self.opt['debug'] and (action_mask[action] < 1):
+            template = self.ent_tracker.extract_entity_types(
+                            self.word_dict.tokenize(label))
+            print("True action forbidden in action_mask: ", targets[0], template)
 
         return (features, action, action_mask)
 
