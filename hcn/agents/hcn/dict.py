@@ -21,11 +21,11 @@ import re
 
 from parlai.core.dict import DictionaryAgent
 
-from .entities import Babi5EntityTracker, Babi6EntityTracker 
+from .entities import Babi5EntityTracker, Babi6EntityTracker
 from .database import DatabaseSimulator
 from .utils import normalize_text, filter_service_words
-from .utils import is_silence, is_api_answer, is_null_api_answer, iter_api_response
-from .utils import babi6_dirty_fix
+from .utils import is_api_answer, is_null_api_answer, iter_api_response
+from .utils import is_silence, babi6_dirty_fix
 
 
 NLP = spacy.load('en')
@@ -75,7 +75,11 @@ class ActionDictionaryAgent(DictionaryAgent):
             self.database = DatabaseSimulator(database_file)
 
         # entity tracker
-        self.tracker = Babi6EntityTracker #Babi5EntityTracker
+        self.tracker = None
+        if self.opt['tracker'] == 'babi6':
+            self.tracker = Babi6EntityTracker
+        elif self.opt['tracker'] == 'babi5':
+            self.tracker = Babi5EntityTracker
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""
@@ -93,11 +97,13 @@ class ActionDictionaryAgent(DictionaryAgent):
         except for line breaks.
         """
         text = ' '.join(tokens)
-        step1 = text.replace("`` ", '"').replace(" ''", '"').replace('. . .',  '...')
+        step0 = text.replace('. . .',  '...')
+        step1 = step0.replace("`` ", '"').replace(" ''", '"')
         step2 = step1.replace(" ( ", " (").replace(" ) ", ") ")
         step3 = re.sub(r' ([.,:;?!%]+)([ \'"`])', r"\1\2", step2)
         step4 = re.sub(r' ([.,:;?!%]+)$', r"\1", step3)
-        step5 = step4.replace(" '", "'").replace(" n't", "n't").replace(" nt", "nt").replace("can not", "cannot")
+        step5 = step4.replace(" '", "'").replace(" n't", "n't")\
+            .replace(" nt", "nt").replace("can not", "cannot")
         step6 = step5.replace(" ` ", " '")
         return step6.strip()
 
@@ -108,7 +114,7 @@ class ActionDictionaryAgent(DictionaryAgent):
 # TODO: ?add normalization of a token?
         for token in tokens:
             if self.embedding_words is not None and \
-                token not in self.embedding_words:
+               token not in self.embedding_words:
                 continue
             self.freq[token] += 1
             if token not in self.tok2ind:
@@ -118,7 +124,7 @@ class ActionDictionaryAgent(DictionaryAgent):
 
     def act(self):
         """
-            - Add words passed in the 'text' field of the observation to 
+            - Add words passed in the 'text' field of the observation to
         the dictionary,
             - extract action templates from all 'label_candidates' once
             - update database from api responses in 'text' field.
@@ -127,7 +133,7 @@ class ActionDictionaryAgent(DictionaryAgent):
         # if utterance is not <SILENCE> or an api_call response, add to dict
         text = self.observation.get('text')
         if text:
-            if is_api_answer(text): 
+            if is_api_answer(text):
                 self.update_database(text)
             elif not is_silence(text):
                 self.add_to_dict(filter_service_words(self.tokenize(text)))
@@ -137,7 +143,8 @@ class ActionDictionaryAgent(DictionaryAgent):
             actions = set()
             for cand in self.observation.get('label_candidates'):
                 if cand:
-                    tokens = self.tracker.extract_entity_types(self.tokenize(cand))
+                    tokens = self.tracker.extract_entity_types(
+                        self.tokenize(cand))
                     actions.add(self.detokenize(tokens))
             self.action_templates = sorted(actions)
 
@@ -145,11 +152,11 @@ class ActionDictionaryAgent(DictionaryAgent):
 
     def update_database(self, text):
         if not is_null_api_answer(text):
-            self.database.insert_many(list(iter_api_response(text))) 
+            self.database.insert_many(list(iter_api_response(text)))
 
     def get_action_id(self, tokens):
         action = self.detokenize(self.tracker.extract_entity_types(tokens))
-        action_id = self.action_templates.index(action) 
+        action_id = self.action_templates.index(action)
         return action_id if action_id != 19 else 6
 
     def get_action_by_id(self, action_id):
@@ -171,13 +178,15 @@ class ActionDictionaryAgent(DictionaryAgent):
     def save_actions(self, filename=None, append=False):
         """Save action templates to file.
         Templates are separated by ends of lines.
-        
-        If ``append`` (default ``False``) is set to ``True``, appends instead of rewriting.
+
+        If ``append`` (default ``False``) is set to ``True``,
+        appends instead of rewriting.
         """
         if self.opt.get('dict_file'):
             filename = filename or self.opt['dict_file'] + '.actions'
         if filename is None:
-            print('Dictionary: action templates aren\'t saved: filename not specified.')
+            print('Dictionary: action templates aren\'t saved: '
+                  'filename not specified.')
         else:
             print('Dictionary: saving action templates to {}'.format(filename))
             with open(filename, 'a' if append else 'w') as write:
@@ -201,4 +210,3 @@ class ActionDictionaryAgent(DictionaryAgent):
 
     def __str__(self):
         return str(self.freq) + '\n' + str(self.action_templates)
-

@@ -32,7 +32,8 @@ class DialogMetrics(object):
         self.n_train_corr_dialog_actions = 0
         self.n_train_corr_examples = 0
         self.n_train_corr_dialogs = 0
-        self.conf_matrix = np.zeros((self.n_actions, self.n_actions), dtype=np.float32)
+        self.conf_matrix = np.zeros((self.n_actions, self.n_actions),
+                                    dtype=np.float32)
 
     @property
     def n_train_corr_actions(self):
@@ -62,7 +63,7 @@ class DialogMetrics(object):
         # denom = tp + fn
         denom = np.sum(self.conf_matrix, axis=0)
         denom[np.where(denom < self.EPS)[0]] = 1
-        return tp / denom 
+        return tp / denom
 
     def action_train_fs_beta(self, beta=1):
         tp = np.diag(self.conf_matrix)
@@ -72,7 +73,7 @@ class DialogMetrics(object):
         beta2_1 = 1 + beta2
         denom = beta2_1 * tp + beta2 * fn + fp
         denom[np.where(denom < self.EPS)[0]] = 1.
-        return beta2_1 * tp / denom 
+        return beta2_1 * tp / denom
 
     def action_train_weighted_f_beta(self, beta=1):
         weights = np.sum(self.conf_matrix, axis=0)
@@ -92,12 +93,11 @@ class DialogMetrics(object):
         return self.train_loss / max(1., self.n_examples)
 
     def report(self):
-        return ('[ dialogs:{:d} exs:{:d} mean_loss:{:.4f}'\
+        return ('[ dialogs:{:d} exs:{:d} mean_loss:{:.4f}'
                 ' act_turn_acc:{:.4f}, act_dialog_acc:{:.4f}'
-                ' act_weighted_f1:{:.4f}'\
+                ' act_weighted_f1:{:.4f}'
                 ' turn_acc:{:.4f} dialog_acc:{:.4f} ]'.format(
-                    self.n_dialogs, self.n_examples, self.mean_train_loss, 
+                    self.n_dialogs, self.n_examples, self.mean_train_loss,
                     self.action_train_accuracy, self.action_train_d_accuracy,
                     self.action_train_weighted_f_beta(1),
                     self.train_accuracy, self.train_d_accuracy))
-

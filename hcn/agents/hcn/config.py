@@ -24,13 +24,18 @@ def add_cmdline_args(parser):
 
     # Basics
     agent.add_argument('--embedding-file', type=str, default=None,
-            help='File of space separated embeddings: w e1 .. ed')
+                       help='File of space separated embeddings: w e1 .. ed')
     agent.add_argument('--pretrained-model', type=str, default=None,
-            help='Load dict/features/weights/opts from the file prefix')
+                       help='Load dict/features/weights/opts from '
+                       'the file prefix')
     agent.add_argument('--log-file', type=str, default=None)
+    agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],
+                       help='Type of entity tracker to use. Implemented only '
+                       'for dialog_babi5 and dialog_babi6.')
 
     # Model specification
     agent.add_argument('--learning-rate', type=float, default=.1)
     agent.add_argument('--epoch-num', type=int, default=1)
     agent.add_argument('--hidden-dim', type=int, default=128)
-
+    agent.add_argument('--action-mask', type='bool', default=False,
+                       help='Use action mask to put constrains on actions.')

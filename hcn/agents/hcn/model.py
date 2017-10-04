@@ -30,7 +30,8 @@ class HybridCodeNetworkModel(object):
         self.opt = copy.deepcopy(opt)
 
         if self.opt.get('pretrained_model'):
-            print("[ Initializing model from `{}` ]".format(self.opt['pretrained_model']))
+            print("[ Initializing model from `{}` ]"
+                  .format(self.opt['pretrained_model']))
             # restore state, parameters and session
             self.restore(self.opt['pretrained_model'])
         else:
@@ -49,7 +50,7 @@ class HybridCodeNetworkModel(object):
         params = params or self.opt
         self.learning_rate = params['learning_rate']
         self.n_epoch = params['epoch_num']
-        self.n_hidden = params['hidden_dim'] 
+        self.n_hidden = params['hidden_dim']
         self.n_actions = params['action_size']
         self.obs_size = params['obs_size']
 
@@ -57,55 +58,57 @@ class HybridCodeNetworkModel(object):
         tf.reset_default_graph()
 
         # entry points
-        self._features = tf.placeholder(tf.float32, [1, self.obs_size], 
-                name='features')
+        self._features = tf.placeholder(tf.float32, [1, self.obs_size],
+                                        name='features')
         self._state_c = tf.placeholder(tf.float32, [1, self.n_hidden],
-                name='state_c') 
+                                       name='state_c')
         self._state_h = tf.placeholder(tf.float32, [1, self.n_hidden],
-                name='state_h') 
-        self._action = tf.placeholder(tf.int32, 
-                name='ground_truth_action')
-        self._action_mask = tf.placeholder(tf.float32, [self.n_actions], 
-                name='action_mask')
+                                       name='state_h')
+        self._action = tf.placeholder(tf.int32,
+                                      name='ground_truth_action')
+        self._action_mask = tf.placeholder(tf.float32, [self.n_actions],
+                                           name='action_mask')
 
         # input projection
-        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden], 
-                initializer=xavier_initializer())
-        _bi = tf.get_variable('bi', [self.n_hidden], 
-                initializer=tf.constant_initializer(0.))
+        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden],
+                              initializer=xavier_initializer())
+        _bi = tf.get_variable('bi', [self.n_hidden],
+                              initializer=tf.constant_initializer(0.))
 
         # add relu/tanh here if necessary
         _projected_features = tf.matmul(self._features, _Wi) + _bi
 
         _lstm_f = tf.contrib.rnn.LSTMCell(self.n_hidden, state_is_tuple=True)
 
-        _lstm_op, self._next_state = _lstm_f(inputs=_projected_features, 
-                state=(self._state_c, self._state_h))
+        _lstm_op, self._next_state = _lstm_f(inputs=_projected_features,
+                                             state=(self._state_c,
+                                                    self._state_h))
 
         # reshape LSTM's state tuple (2,128) -> (1,256)
-        _state_reshaped = tf.concat(axis=1, 
-                values=(self._next_state.c, self._next_state.h))
+        _state_reshaped = tf.concat(axis=1,
+                                    values=(self._next_state.c,
+                                            self._next_state.h))
 
         # output projection
-        _Wo = tf.get_variable('Wo', [2*self.n_hidden, self.n_actions], 
-                initializer=xavier_initializer())
-        _bo = tf.get_variable('bo', [self.n_actions], 
-                initializer=tf.constant_initializer(0.))
+        _Wo = tf.get_variable('Wo', [2*self.n_hidden, self.n_actions],
+                              initializer=xavier_initializer())
+        _bo = tf.get_variable('bo', [self.n_actions],
+                              initializer=tf.constant_initializer(0.))
         # get logits
         _logits = tf.matmul(_state_reshaped, _Wo) + _bo
 
         # probabilities normalization : elemwise multiply with action mask
-        self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)), 
-                self._action_mask)
-        
+        self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)),
+                                  self._action_mask)
+
         self._prediction = tf.argmax(self._probs, axis=0)
 
         self._loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
-                logits=_logits, labels=self._action)
+            logits=_logits, labels=self._action)
 
-        self._step = tf.Variable(0, trainable=False, name='global_step') 
+        self._step = tf.Variable(0, trainable=False, name='global_step')
         self._train_op = tf.train.AdadeltaOptimizer(self.learning_rate)\
-                .minimize(self._loss, global_step=self._step)
+            .minimize(self._loss, global_step=self._step)
 
         # create collections for easier `restore` operation
         tf.add_to_collection('next_state_c', self._next_state.c)
@@ -118,46 +121,53 @@ class HybridCodeNetworkModel(object):
 
     def reset_state(self):
         # set zero state
-        self.state_c = np.zeros([1,self.n_hidden], dtype=np.float32)
-        self.state_h = np.zeros([1,self.n_hidden], dtype=np.float32)
+        self.state_c = np.zeros([1, self.n_hidden], dtype=np.float32)
+        self.state_h = np.zeros([1, self.n_hidden], dtype=np.float32)
 
     def update(self, features, action, action_mask):
         _, loss_value, self.state_c, self.state_h, prediction = \
-                self._sess.run(
-                        [ self._train_op, self._loss, self._next_state.c, 
-                            self._next_state.h, self._prediction ],
-                        feed_dict={
-                            self._features: features.reshape([1, self.obs_size]),
-                            self._action: [action],
-                            self._state_c: self.state_c,
-                            self._state_h: self.state_h,
-                            self._action_mask: action_mask
-                            })
+            self._sess.run(
+                [
+                    self._train_op, self._loss, self._next_state.c,
+                    self._next_state.h, self._prediction
+                ],
+                feed_dict={
+                    self._features: features.reshape([1, self.obs_size]),
+                    self._action: [action],
+                    self._state_c: self.state_c,
+                    self._state_h: self.state_h,
+                    self._action_mask: action_mask
+                }
+            )
         return loss_value[0], prediction
 
     def predict(self, features, action_mask):
         probs, prediction, self.state_c, self.state_h = \
-                self._sess.run(
-                        [ self._probs, self._prediction, self._next_state.c, 
-                            self._next_state.h ],
-                        feed_dict={
-                            self._features: features.reshape([1, self.obs_size]),
-                            self._state_c: self.state_c,
-                            self._state_h: self.state_h,
-                            self._action_mask: action_mask
-                            })
+            self._sess.run(
+                [
+                    self._probs, self._prediction, self._next_state.c,
+                    self._next_state.h
+                ],
+                feed_dict={
+                    self._features: features.reshape([1, self.obs_size]),
+                    self._state_c: self.state_c,
+                    self._state_h: self.state_h,
+                    self._action_mask: action_mask
+                }
+            )
         return probs, prediction
 
     def restore(self, fname=None):
         """Restore graph, important operations and state"""
         fname = fname or self.opt['pretrained_model']
-        json_fname, meta_fname = "{}.json".format(fname), "{}.meta".format(fname)
-        #tf.train.get_checkpoint_state(*os.path.split(meta_fname))
+        json_fname = "{}.json".format(fname)
+        meta_fname = "{}.meta".format(fname)
+        # tf.train.get_checkpoint_state(*os.path.split(meta_fname))
 
         if os.path.isfile(meta_fname):
             print("[restoring model from {}]".format(meta_fname))
             tf.reset_default_graph()
-            #_saver = tf.train.Saver()
+            # _saver = tf.train.Saver()
             _saver = tf.train.import_meta_graph(meta_fname)
             self._sess = tf.Session()
             _saver.restore(self._sess, fname)
@@ -196,27 +206,29 @@ class HybridCodeNetworkModel(object):
             exit()
 
     def save(self, fname='hcn'):
-        """Store 
+        """
+        Store
             - graph in <fname>.meta
             - parameters and state in <fname>.json
         """
         step = tf.train.global_step(self._sess, self._step)
-        #meta_fname = "{}-{}.meta".format(fname, step)
-        #json_fname = "{}-{}.json".format(fname, step)
+        # meta_fname = "{}-{}.meta".format(fname, step)
+        # json_fname = "{}-{}.json".format(fname, step)
         meta_fname = fname + '.meta'
         json_fname = fname + '.json'
 
         # save graph
         print("[saving graph to {}]".format(meta_fname))
         _saver = tf.train.Saver()
-        _saver.save(self._sess, fname)#, global_step=step)
-        
+        _saver.save(self._sess, fname)  # , global_step=step)
+
         # save state and options
         print("[saving options to {}]".format(json_fname))
         with open(json_fname, 'w') as f:
-            json.dump((self.opt, 
-                (self.state_c.tolist(), self.state_h.tolist())), f)
+            json.dump(
+                (self.opt, (self.state_c.tolist(), self.state_h.tolist())),
+                f
+            )
 
     def shutdown(self):
         self._sess.close()
-

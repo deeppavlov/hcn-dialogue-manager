@@ -26,27 +26,32 @@ class DatabaseSimulator(object):
 
     def create_table(self, fields, types, tname='restaurants'):
         self.fields = fields
-        f_types = ('{} {} primary key'.format(f, t) if f == 'R_name' \
-                else '{} {}'.format(f, t) \
-                for f, t in zip(fields, types))
-        self.cursor.execute('CREATE TABLE IF NOT EXISTS {} ({})'\
-                .format(tname, ', '.join(f_types)))
+        f_types = ('{} {} primary key'.format(f, t) if f == 'R_name'
+                   else '{} {}'.format(f, t)
+                   for f, t in zip(fields, types))
+        self.cursor.execute('CREATE TABLE IF NOT EXISTS {} ({})'
+                            .format(tname, ', '.join(f_types)))
 
     def check_if_table_exists(self, tname='restaurants'):
-        self.cursor.execute("SELECT name FROM sqlite_master WHERE type='table'"\
-                " AND name='{}';".format(tname))
+        self.cursor.execute("SELECT name FROM sqlite_master"
+                            " WHERE type='table'"
+                            " AND name='{}';".format(tname))
         return bool(self.cursor.fetchall())
 
     def _check_if_resto_exists(self, name, tname='restaurants'):
-        return bool(self.cursor.execute(
-            "SELECT EXISTS(SELECT 1 FROM {} WHERE R_name='{}')".format(tname, name)\
-                    ).fetchone()[0])
-        
+        return bool(self.cursor.execute("SELECT EXISTS("
+                                        " SELECT 1 FROM {}"
+                                        " WHERE R_name='{}')"
+                                        .format(tname, name))
+                    .fetchone()[0])
+
     def _update_one(self, name, info, tname='restaurants'):
-        set_expr = ', '.join(["{} = '{}'".format(f, v) \
-                for f, v in info.items() if f != 'R_name'])
+        set_expr = ', '.join(["{} = '{}'".format(f, v)
+                              for f, v in info.items() if f != 'R_name'])
         where_expr = "R_name = '{}'".format(name)
-        self.cursor.execute("UPDATE {} SET {} WHERE {};".format(tname, set_expr, where_expr))
+        self.cursor.execute("UPDATE {}"
+                            " SET {}"
+                            " WHERE {};".format(tname, set_expr, where_expr))
 
     def insert_one(self, restaurant, tname='restaurants'):
         if not restaurant:
@@ -54,16 +59,18 @@ class DatabaseSimulator(object):
             return
         if not self.fields:
             fields = list(restaurant.keys())
-            types = ('integer' if type(restaurant[f]) == int else 'text'\
-                    for f in fields)
+            types = ('integer' if type(restaurant[f]) == int else 'text'
+                     for f in fields)
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
         if self._check_if_resto_exists(restaurant['R_name']):
             self._update_one(restaurant['R_name'], restaurant)
         else:
-            self.cursor.execute('INSERT into {} VALUES {}'.format(tname, fformat),
-                    [restaurant.get(f, 'UNK') for f in self.fields])
+            self.cursor.execute("INSERT into {} VALUES {}"
+                                .format(tname, fformat),
+                                [restaurant.get(f, 'UNK')
+                                 for f in self.fields])
         self.conn.commit()
 
     def insert_many(self, restaurants, tname='restaurants'):
@@ -72,8 +79,8 @@ class DatabaseSimulator(object):
             return
         if not self.fields:
             fields = list(restaurants[0].keys())
-            types = ('integer' if type(restaurants[0][f]) == int else 'text'\
-                    for f in fields)
+            types = ('integer' if type(restaurants[0][f]) == int else 'text'
+                     for f in fields)
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
@@ -84,9 +91,10 @@ class DatabaseSimulator(object):
             else:
                 self._update_one(r['R_name'], r)
         if r_to_insert:
-            self.cursor.executemany('INSERT into {} VALUES {}'\
-                    .format(tname, fformat),
-                    [[r.get(f, 'UNK') for f in self.fields] for r in r_to_insert])
+            self.cursor.executemany("INSERT into {} VALUES {}"
+                                    .format(tname, fformat),
+                                    [[r.get(f, 'UNK') for f in self.fields]
+                                     for r in r_to_insert])
         self.conn.commit()
 
     def get_field_names(self, tname='restaurants'):
@@ -103,26 +111,30 @@ class DatabaseSimulator(object):
         return {f: v for f, v in zip(self.fields, selection)}
 
     def search(self, properties=None, order_by=None, ascending=False,
-            tname='restaurants'):
+               tname='restaurants'):
         order = 'ASC' if ascending else 'DESC'
         if not self.fields and not self.check_if_table_exists():
             return []
         if not properties:
             # get all table content
             if order_by is not None:
-                self.cursor.execute('SELECT * FROM {} ORDER BY {} {}'\
-                        .format(tname, order_by, order))
+                self.cursor.execute("SELECT * FROM {}"
+                                    " ORDER BY {} {}"
+                                    .format(tname, order_by, order))
             else:
                 self.cursor.execute('SELECT * FROM {}'.format(tname))
         else:
             keys = list(properties.keys())
             where_expr = ' AND '.join(['{}=?'.format(k) for k in keys])
             if order_by is not None:
-                self.cursor.execute('SELECT * FROM {} WHERE {} ORDER BY {} {}'\
-                    .format(tname, where_expr, order_by, order), 
-                    [properties[k] for k in keys])
+                self.cursor.execute("SELECT * FROM {}"
+                                    " WHERE {}"
+                                    " ORDER BY {} {}"
+                                    .format(tname, where_expr, order_by,
+                                            order),
+                                    [properties[k] for k in keys])
             else:
-                self.cursor.execute('SELECT * FROM {} WHERE {}'\
-                    .format(tname, where_expr), [properties[k] for k in keys])
+                self.cursor.execute("SELECT * FROM {}"
+                                    " WHERE {}".format(tname, where_expr),
+                                    [properties[k] for k in keys])
         return list(map(self.wrap_selection, self.cursor.fetchall() or []))
-

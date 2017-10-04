@@ -36,14 +36,9 @@ class HybridCodeNetworkAgent(Agent):
         config.add_cmdline_args(argparser)
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
         argparser.add_argument('--debug', type='bool', default=False,
-                help='Print debug output.')
+                               help='Print debug output.')
         argparser.add_argument('--debug-wrong', type='bool', default=False,
-                help='Print debug output.')
-        argparser.add_argument('--tracker', required=True, 
-                choices=['babi5', 'babi6'],
-                help='Type of entity tracker to use. Implemented only for dialog_babi5 and dialog_babi6.')
-        argparser.add_argument('--action-mask', type='bool', default=False,
-                help='Use action mask to put constrains on actions.')
+                               help='Print debug output.')
 
     @staticmethod
     def dictionary_class():
@@ -79,7 +74,6 @@ class HybridCodeNetworkAgent(Agent):
         self.current_result = None
         self.n_actions = len(self.word_dict.action_templates)
         self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
-# TODO: flag that inidicates whether api was called during last response
         self.api_called, self.api_just_called = False, False
 
         # initialize metrics
@@ -88,9 +82,9 @@ class HybridCodeNetworkAgent(Agent):
         opt['action_size'] = self.n_actions
 # TODO: enrich features
         opt['obs_size'] = 11 + len(self.word_dict) + \
-                2 * self.ent_tracker.num_features + self.n_actions
+            2 * self.ent_tracker.num_features + self.n_actions
 
-        self.model = HybridCodeNetworkModel(opt) 
+        self.model = HybridCodeNetworkModel(opt)
 
     def observe(self, observation):
         """Receive an observation/action dict."""
@@ -129,8 +123,9 @@ class HybridCodeNetworkAgent(Agent):
             self.metrics.conf_matrix[pred, ex[1]] += 1
             self.metrics.n_train_corr_examples += int(pred_text == label_text)
             if self.opt['debug_wrong'] and (pred_text != label_text):
-                print("True: '{}'\nPredicted: '{}'".format(label_text, pred_text))
-#TODO: update number of correct dialogs
+                print("True: '{}'\nPredicted: '{}'".format(
+                    label_text, pred_text))
+# TODO: update number of correct dialogs
         else:
             if self.opt['debug']:
                 print("Example = ", ex)
@@ -145,11 +140,11 @@ class HybridCodeNetworkAgent(Agent):
 
     def _build_ex(self, ex):
         # check if empty input (end of epoch)
-        if not 'text' in ex:
+        if 'text' not in ex:
             return
 
         # reinitilize entity tracker for new dialog
-        if self.episode_done: 
+        if self.episode_done:
             self.ent_tracker.restart()
             self.database_results = []
             self.current_result = None
@@ -160,7 +155,7 @@ class HybridCodeNetworkAgent(Agent):
 
         # tokenize input
         tokens = self.word_dict.tokenize(ex['text'])
- 
+
         # store database results
         if is_api_answer(ex['text']) and not is_null_api_answer(ex['text']):
             self.word_dict.update_database(ex['text'])
@@ -176,13 +171,16 @@ class HybridCodeNetworkAgent(Agent):
         if not is_api_answer(ex['text']):
             if self.opt['debug']:
                 print("Text = ", ex['text'])
-                print("Updating entities, old = ", self.ent_tracker.entities.values())
+                print("Updating entities, old = ",
+                      self.ent_tracker.entities.values())
             self.ent_tracker.update_entities(tokens)
             if self.opt['debug']:
-                print("Updating entities, new = ", self.ent_tracker.entities.values())
+                print("Updating entities, new = ",
+                      self.ent_tracker.entities.values())
         new_entities = self.ent_tracker.categ_features()
         binary_features = self.ent_tracker.binary_features()
-        diff_features = np.array(prev_entities != new_entities, dtype=np.float32)
+        diff_features = np.array(prev_entities != new_entities,
+                                 dtype=np.float32)
         ent_features = np.hstack((binary_features, diff_features))
         if self.opt['debug']:
             print("Bow feats shape = {}, ent feats shape = {}".format(
@@ -193,7 +191,7 @@ class HybridCodeNetworkAgent(Agent):
             is_silence(ex['text']),
             sum(binary_features),
             sum(diff_features),
-            bool(self.word_dict.database.search(self.ent_tracker.entities)) * 1.,
+            bool(self.word_dict.database.search(self.ent_tracker.entities))*1.,
             bool(self.word_dict.database.search(
                 {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
             self.api_just_called * 1.,
@@ -202,8 +200,8 @@ class HybridCodeNetworkAgent(Agent):
             self.api_called * 1.,
             bool(self.current_result) * 1.,
             (self.api_called and not self.current_result) * 1.
-            #is_api_answer(ex['text']),
-            #is_null_api_answer(ex['text'])],
+            # is_api_answer(ex['text']),
+            # is_null_api_answer(ex['text'])],
             ], dtype=np.float32)
         if self.opt['debug']:
             print("Entities = ", self.ent_tracker.entities)
@@ -215,7 +213,7 @@ class HybridCodeNetworkAgent(Agent):
             ))[np.newaxis, :]
         if self.opt['debug']:
             print("Feats shape = ", features.shape)
-        
+
         # constructing mask of allowed actions
         action_mask = np.ones(self.n_actions, dtype=np.float32)
         if self.opt['action_mask']:
@@ -226,11 +224,9 @@ class HybridCodeNetworkAgent(Agent):
                         if (entity not in self.ent_tracker.entities) and \
                                 (entity not in (self.current_result or {})):
                             action_mask[a_id] = 0.
-                            #if self.opt['debug']:
-                            #    print("Action '{}' not allowed.".format(action))
         if self.opt['debug']:
             print("Action_mask shape = ", action_mask.shape)
-       
+
         # extract action templates
         targets = []
         for label in ex.get('labels', []):
@@ -239,7 +235,8 @@ class HybridCodeNetworkAgent(Agent):
                         self.word_dict.tokenize(label))
                 action = self.word_dict.get_action_id(template)
             except:
-                raise RuntimeError('Invalid label. Should match one of action templates from train.')
+                raise RuntimeError('Invalid label. Should match one of'
+                                   'action templates from train.')
             targets.append((label, action))
         # in case of prediction do not return action
         if not targets:
@@ -250,12 +247,16 @@ class HybridCodeNetworkAgent(Agent):
         if self.opt['debug'] and (action_mask[action] < 1):
             template = self.ent_tracker.extract_entity_types(
                             self.word_dict.tokenize(label))
-            print("True action forbidden in action_mask: ", targets[0], template)
+            print("True action forbidden in action_mask: ",
+                  targets[0], template)
 
         return (features, action, action_mask)
 
     def _generate_response(self, action_id):
-        """Convert action template id and entities from tracker to final response."""
+        """
+        Convert action template id and entities from tracker
+        to final response.
+        """
         template = self.word_dict.get_action_by_id(action_id)
 
         # is api request
@@ -265,7 +266,8 @@ class HybridCodeNetworkAgent(Agent):
                     order_by='R_rating', ascending=False)
             self.api_just_called, self.api_called = True, True
             if self.opt['debug']:
-                print("Looking for {} in database.".format(self.ent_tracker.entities))
+                print("Looking for {} in database.".format(
+                      self.ent_tracker.entities))
                 print("DatabaseSimulator results = ", self.database_results)
             if self.database_results and (self.opt['tracker'] == 'babi6'):
                 self.current_result = self.database_results.pop(0)
@@ -273,15 +275,15 @@ class HybridCodeNetworkAgent(Agent):
             self.api_just_called = False
             if self.current_result is not None:
                 for k, v in self.current_result.items():
-                    template = template.replace(k, str(v)) 
+                    template = template.replace(k, str(v))
         # is restaurant offering
         if self.database_results:
             if (self.opt['tracker'] == 'babi5') and (action_id == 12):
                 self.current_result = self.database_results.pop(0)
                 if self.opt['debug']:
                     print("API best response = ", self.current_result)
-        
-        return self.ent_tracker.fill_entities(template) 
+
+        return self.ent_tracker.fill_entities(template)
 
     def report(self):
         return self.metrics.report()
@@ -304,4 +306,3 @@ class HybridCodeNetworkAgent(Agent):
             if self.model is not None:
                 self.model.shutdown()
             self.model = None
-
