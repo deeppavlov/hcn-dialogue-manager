@@ -160,7 +160,7 @@ class Babi6EntityTracker(EntityTracker):
             'saigon_city', 'mahal_of_cambridge', 'pizza_express', 'sala_thong',
             'anatolia', 'ugly_duckling', 'grafton_hotel_restaurant', 'cotto',
             'restaurant_one_seven', 'shanghai_family_restaurant', 'rajmahal',
-            'eraina', 'the_cow_pizza_kitchen', 'the_good_luck', 'royal_spice'
+            'eraina', 'the_cow_pizza_kitchen', 'the_good_luck', 'royal_spice',
             'yu_garden', 'midsummer_house_restaurant', 'thanh_binh',
             'michaelhouse_cafe', 'la_margherita', 'rice_house',
             'the_slug_and_lettuce', 'the_nirala', 'don_pasquale_pizzeria',

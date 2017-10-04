@@ -88,7 +88,7 @@ class HybridCodeNetworkAgent(Agent):
 
     def observe(self, observation):
         """Receive an observation/action dict."""
-        observation = copy.deepcopy(observation)
+        # observation = copy.deepcopy(observation)
         self.observation = observation
         self.episode_done = observation['episode_done']
         return observation

@@ -45,6 +45,16 @@ class DatabaseSimulator(object):
                                         .format(tname, name))
                     .fetchone()[0])
 
+    def get_resto_info(self, name, tname='restaurants'):
+        if not self.fields:
+            self.fields = self.get_field_names()
+        ffields = ', '.join(self.fields) or '*'
+        fetched = self.cursor.execute("SELECT {} FROM {}"
+                                      " WHERE R_name='{}'"
+                                      .format(ffields, tname, name))\
+            .fetchone() or ()
+        return {f: v for f, v in zip(self.fields, fetched)}
+
     def _update_one(self, name, info, tname='restaurants'):
         set_expr = ', '.join(["{} = '{}'".format(f, v)
                               for f, v in info.items() if f != 'R_name'])
@@ -53,43 +63,46 @@ class DatabaseSimulator(object):
                             " SET {}"
                             " WHERE {};".format(tname, set_expr, where_expr))
 
-    def insert_one(self, restaurant, tname='restaurants'):
-        if not restaurant:
+    def insert_one(self, resto, tname='restaurants'):
+        if not resto:
             print("DatabaseSimulator error: empty restaurant properties.")
             return
         if not self.fields:
-            fields = list(restaurant.keys())
-            types = ('integer' if type(restaurant[f]) == int else 'text'
+            fields = list(resto.keys())
+            types = ('integer' if type(resto[f]) == int else 'text'
                      for f in fields)
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
-        if self._check_if_resto_exists(restaurant['R_name']):
-            self._update_one(restaurant['R_name'], restaurant)
+        db_resto = self.get_resto_info(resto['R_name'])
+        if db_resto:
+            if db_resto != resto:
+                self._update_one(resto['R_name'], resto)
         else:
             self.cursor.execute("INSERT into {} VALUES {}"
                                 .format(tname, fformat),
-                                [restaurant.get(f, 'UNK')
-                                 for f in self.fields])
+                                [resto.get(f, 'UNK') for f in self.fields])
         self.conn.commit()
 
-    def insert_many(self, restaurants, tname='restaurants'):
-        if not restaurants or type(restaurants) is not list:
+    def insert_many(self, restos, tname='restaurants'):
+        if not restos or type(restos) is not list:
             print("DatabaseSimulator error: wrong restaurants format")
             return
         if not self.fields:
-            fields = list(restaurants[0].keys())
-            types = ('integer' if type(restaurants[0][f]) == int else 'text'
+            fields = list(restos[0].keys())
+            types = ('integer' if type(restos[0][f]) == int else 'text'
                      for f in fields)
             self.create_table(fields, types)
 
         fformat = '(' + ','.join(['?']*len(self.fields)) + ')'
         r_to_insert = []
-        for r in restaurants:
-            if not self._check_if_resto_exists(r['R_name']):
-                r_to_insert.append(r)
+        for r in restos:
+            db_resto = self.get_resto_info(r['R_name'])
+            if db_resto:
+                if db_resto != r:
+                    self._update_one(r['R_name'], r)
             else:
-                self._update_one(r['R_name'], r)
+                r_to_insert.append(r)
         if r_to_insert:
             self.cursor.executemany("INSERT into {} VALUES {}"
                                     .format(tname, fformat),
