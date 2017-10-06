@@ -14,72 +14,36 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
-import os
 import spacy
-import string
+import copy
 import re
 
 from parlai.core.dict import DictionaryAgent
 
+from .utils import filter_service_words, babi6_dirty_fix
 from .entities import Babi5EntityTracker, Babi6EntityTracker
-from .database import DatabaseSimulator
-from .utils import normalize_text, filter_service_words
-from .utils import is_api_answer, is_null_api_answer, iter_api_response
-from .utils import is_silence, babi6_dirty_fix
 
 
 NLP = spacy.load('en')
 
 
-class ActionDictionaryAgent(DictionaryAgent):
-    """Override DictionaryAgent to user spaCy tokenizer, ignore labels
-    and also count actions.
+class SpacyDictionaryAgent(DictionaryAgent):
+    """Override DictionaryAgent to use Spacy tokenizer and
+    use preprocessing tricks of dialog_babi5 and dialog_babi6.
     """
 
     @staticmethod
     def add_cmdline_args(argparser):
-        group = DictionaryAgent.add_cmdline_args(argparser)
-        group.add_argument(
-            '--pretrained-words', type='bool', default=True,
-            help='User only words found in provided embedding_file'
-            )
+        DictionaryAgent.add_cmdline_args(argparser)
+        argparser.add_argument(
+            '--tracker', required=True, choices=['babi5', 'babi6'],
+            help='Type of entity tracker to use. Implemented only '
+                 'for dialog_babi5 and dialog_babi6.')
+        return argparser
 
-    def __init__(self, opt, shared=None):
-        self.id = self.__class__.__name__
-        super().__init__(opt, shared)
-
-        # index words in embedding file
-        if self.opt['pretrained_words'] and self.opt.get('embedding_file'):
-            print('[ Indexing words with embeddings... ]')
-            self.embedding_words = set()
-            with open(self.opt['embedding_file']) as f:
-                for line in f:
-                    w = normalize_text(line.strip().split(' ', 1)[0])
-                    self.embedding_words.add(w)
-            print('[ Num words in set = % d ]' % len(self.embedding_words))
-        else:
-            self.embedding_words = None
-
-        # action templates
-        self.action_templates = []
-        if not shared and opt.get('dict_file'):
-            action_file = opt['dict_file'] + '.actions'
-            if os.path.isfile(action_file):
-                # load pre-existing action templates
-                self.load_actions(action_file)
-
-        # database
-        self.database = None
-        if not shared and opt.get('dict_file'):
-            database_file = opt['dict_file'] + '.db'
-            self.database = DatabaseSimulator(database_file)
-
-        # entity tracker
-        self.tracker = None
-        if self.opt['tracker'] == 'babi6':
-            self.tracker = Babi6EntityTracker
-        elif self.opt['tracker'] == 'babi5':
-            self.tracker = Babi5EntityTracker
+    def __init__(self, opt, shared):
+        super().__init__(self.opt, shared)
+        self.word_tok = None
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""
@@ -107,14 +71,53 @@ class ActionDictionaryAgent(DictionaryAgent):
         step6 = step5.replace(" ` ", " '")
         return step6.strip()
 
+
+class WordDictionaryAgent(SpacyDictionaryAgent):
+    """Override SpacyDictionaryAgent to ignore labels and words not in
+    pretrained_words.
+    """
+
+    @staticmethod
+    def add_cmdline_args(argparser):
+        SpacyDictionaryAgent.add_cmdline_args(argparser)
+        dictionary = argparser.add_argument_group('Word Dictionary Arguments')
+        dictionary.add_argument(
+            '--pretrained-words', type='bool', default=True,
+            help='User only words found in provided embedding_file'
+            )
+        dictionary.add_argument(
+            '--embedding-file', type=str, default=None,
+            help='File of space separated embeddings: w e1 .. ed')
+        return dictionary
+
+    def __init__(self, opt, shared=None):
+        self.id = self.__class__.__name__
+
+        # initialize DictionaryAgent
+        self.opt = copy.deepcopy(opt)
+        if self.opt.get('dict_file'):
+            self.opt['dict_file'] = self.opt['dict_file'] + '.words'
+        super().__init__(self.opt, shared)
+
+        # index words in embedding file
+        if self.opt['pretrained_words'] and self.opt.get('embedding_file'):
+            print('[ Indexing words with embeddings... ]')
+            self.embedding_words = set()
+            with open(self.opt['embedding_file']) as f:
+                for line in f:
+                    w = normalize_text(line.strip().split(' ', 1)[0])
+                    self.embedding_words.add(w)
+            print('[ Num words in set = % d ]' % len(self.embedding_words))
+        else:
+            self.embedding_words = None
+
     def add_to_dict(self, tokens):
         """Build dictionary from the list of provided tokens.
         Only add words contained in self.embedding_words, if not None.
         """
 # TODO: ?add normalization of a token?
         for token in tokens:
-            if self.embedding_words is not None and \
-               token not in self.embedding_words:
+            if self.embedding_words and (token not in self.embedding_words):
                 continue
             self.freq[token] += 1
             if token not in self.tok2ind:
@@ -123,90 +126,77 @@ class ActionDictionaryAgent(DictionaryAgent):
                 self.ind2tok[index] = token
 
     def act(self):
+        """Add words passed in the 'text' field of the observation to
+        the dictionary.
         """
-            - Add words passed in the 'text' field of the observation to
-        the dictionary,
-            - extract action templates from all 'label_candidates' once
-            - update database from api responses in 'text' field.
-        """
-        # if utterance is an api response, update database
-        # if utterance is not <SILENCE> or an api_call response, add to dict
         text = self.observation.get('text')
         if text:
-            if is_api_answer(text):
-                self.update_database(text)
-            elif not is_silence(text):
-                self.add_to_dict(filter_service_words(self.tokenize(text)))
-
-        # if action_templates not extracted, extract them
-        if not self.action_templates:
-            actions = set()
-            for cand in self.observation.get('label_candidates'):
-                if cand:
-                    tokens = self.tracker.extract_entity_types(
-                        self.tokenize(cand))
-                    actions.add(self.detokenize(tokens))
-            self.action_templates = sorted(actions)
-
+            self.add_to_dict(filter_service_words(self.tokenize(text)))
         return {'id': self.getID()}
 
-    def update_database(self, text):
-        if not is_null_api_answer(text):
-            self.database.insert_many(list(iter_api_response(text)))
 
-    def get_action_id(self, tokens):
-        action = self.detokenize(self.tracker.extract_entity_types(tokens))
-        action_id = self.action_templates.index(action)
-        return action_id if action_id != 19 else 6
+class ActionDictionaryAgent(SpacyDictionaryAgent):
+    """Override SpacyDictionaryAgent to count actions."""
 
-    def get_action_by_id(self, action_id):
-        return self.action_templates[action_id]
+    @staticmethod
+    def add_cmdline_args(argparser):
+        dictionary = argparser.add_argument_group('Action Dictionary'
+                                                  ' Arguments')
+        dictionary.add_argument(
+            '--action-file',
+            help='if set, the dictionary will automatically save to this path'
+                 ' during shutdown')
+        return dictionary
 
-    def load_actions(self, filename):
-        """Load pre-existing action templates."""
-        print('Dictionary: loading action templates from {}'.format(filename))
-        with open(filename) as read:
-            for line in read:
-                self.action_templates.append(line.strip())
-        print('[ num action templates =  %d ]' % len(self.action_templates))
+    def __init__(self, opt, shared=None):
+        self.id = self.__class__.__name__
 
-    def save(self, filename=None, append=False, sort=True):
-        """Save dictionary and actions to outer files."""
-        super().save(filename, append=append, sort=sort)
-        self.save_actions(filename + '.actions', append=append)
-
-    def save_actions(self, filename=None, append=False):
-        """Save action templates to file.
-        Templates are separated by ends of lines.
-
-        If ``append`` (default ``False``) is set to ``True``,
-        appends instead of rewriting.
-        """
-        if self.opt.get('dict_file'):
-            filename = filename or self.opt['dict_file'] + '.actions'
-        if filename is None:
-            print('Dictionary: action templates aren\'t saved: '
-                  'filename not specified.')
+        # initialize DictionaryAgent
+        self.opt = {
+            'tracker': opt.get('tracker'),
+            'dict_max_ngram_size': -1,
+            'dict_minfreq': 0,
+            'dict_nulltoken': None,
+            'dict_endtoken': None,
+            'dict_unktoken': None,
+            'dict_starttoken': None,
+            'dict_language': SpacyDictionaryAgent.default_lang
+        }
+        if opt.get('action_file'):
+            self.opt['dict_file'] = opt['action_file']
+        elif opt.get('dict_file'):
+            self.opt['dict_file'] = opt['dict_file'] + '.actions'
+        super().__init__(self.opt, shared)
+        '''if shared:
+            self.freq = shared.get('freq', {})
+            self.tok2ind = shared.get('tok2ind', {})
+            self.ind2tok = shared.get('ind2tok', {})
         else:
-            print('Dictionary: saving action templates to {}'.format(filename))
-            with open(filename, 'a' if append else 'w') as write:
-                for action in self.action_templates:
-                    write.write('{}\n'.format(action))
+            self.freq = defaultdict(int)
+            self.tok2ind = {}
+            self.ind2tok = {}'''
 
-    def share(self):
-        shared = {}
-        shared['freq'] = self.freq
-        shared['tok2ind'] = self.tok2ind
-        shared['ind2tok'] = self.ind2tok
-        shared['action_templates'] = self.action_templates
-        shared['opt'] = self.opt
-        shared['class'] = type(self)
-        return shared
+        # entity tracker class methods
+        self.tracker = None
+        if self.opt['tracker'] == 'babi5':
+            self.tracker = Babi5EntityTracker
+        elif self.opt['tracker'] == 'babi6':
+            self.tracker = Babi6EntityTracker
 
-    def shutdown(self):
-        """Save dictionary and actions on shutdown if ``save_path`` is set."""
-        if hasattr(self, 'save_path'):
-            self.save(self.save_path)
+        # properties
+        self.label_candidates = False
 
-    def __str__(self):
-        return str(self.freq) + '\n' + str(self.action_templates)
+    def get_template(self, tokens):
+        tokens = self.tracker.extract_entity_types(tokens)
+        return self.detokenize(tokens)
+
+    def act(self):
+        """Extract action templates from 'label_candidates' once."""
+        if not self.label_candidates:
+            self.label_candidates = True
+            for text in self.observation.get('label_candidates', ()):
+                if text:
+                    tokens = self.tokenize(text)
+                    self.add_to_dict([self.get_template(tokens)])
+
+        return {'id': self.getID()}

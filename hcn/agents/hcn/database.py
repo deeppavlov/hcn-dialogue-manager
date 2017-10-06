@@ -38,11 +38,12 @@ class DatabaseSimulator(object):
                             " AND name='{}';".format(tname))
         return bool(self.cursor.fetchall())
 
-    def _check_if_resto_exists(self, name, tname='restaurants'):
+    def _check_if_resto_exists(self, resto, tname='restaurants'):
+        logic_expr = ' AND '.join(['{}=\'{}\''.format(f, v)
+                                   for f, v in resto.items()])
         return bool(self.cursor.execute("SELECT EXISTS("
                                         " SELECT 1 FROM {}"
-                                        " WHERE R_name='{}')"
-                                        .format(tname, name))
+                                        " WHERE {})".format(tname, logic_expr))
                     .fetchone()[0])
 
     def get_resto_info(self, name, tname='restaurants'):

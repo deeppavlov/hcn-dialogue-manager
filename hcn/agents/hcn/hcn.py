@@ -22,9 +22,9 @@ from parlai.core.agents import Agent
 
 from . import config
 from .model import HybridCodeNetworkModel
-from .dict import ActionDictionaryAgent
+from .preprocess import HCNPreprocessAgent
+from .database import DatabaseSimulator
 from .entities import Babi5EntityTracker, Babi6EntityTracker
-from .utils import normalize_text
 from .utils import is_silence, is_null_api_answer, is_api_answer
 from .metrics import DialogMetrics
 
@@ -39,10 +39,11 @@ class HybridCodeNetworkAgent(Agent):
                                help='Print debug output.')
         argparser.add_argument('--debug-wrong', type='bool', default=False,
                                help='Print debug output.')
+        return argparser
 
     @staticmethod
     def dictionary_class():
-        return ActionDictionaryAgent
+        return HCNPreprocessAgent
 
     def __init__(self, opt, shared=None):
         if opt['numthreads'] > 1:
@@ -58,8 +59,11 @@ class HybridCodeNetworkAgent(Agent):
             self.is_shared = True
             return
 
-        # initialize word dictionary and action templates
-        self.word_dict = HybridCodeNetworkAgent.dictionary_class()(opt)
+        # database
+        # self.database = None
+        # if not shared and opt.get('model_file'):
+        #     database_file = opt['model_file'] + '.db'
+        #     self.database = DatabaseSimulator(database_file)
 
         # initialize entity tracker
         self.ent_tracker = None
@@ -68,11 +72,14 @@ class HybridCodeNetworkAgent(Agent):
         elif self.opt['tracker'] == 'babi6':
             self.ent_tracker = Babi6EntityTracker()
 
+        # initialize word dictionary and action templates
+        self.preps = HybridCodeNetworkAgent.dictionary_class()(opt)
+
         # intialize parameters
         self.is_shared = False
         self.database_results = []
         self.current_result = None
-        self.n_actions = len(self.word_dict.action_templates)
+        self.n_actions = len(self.preps.actions)
         self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
         self.api_called, self.api_just_called = False, False
 
@@ -81,7 +88,7 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 11 + len(self.word_dict) + \
+        opt['obs_size'] = 11 + len(self.preps.words) + \
             2 * self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt)
@@ -113,7 +120,7 @@ class HybridCodeNetworkAgent(Agent):
 
             pred_text = self._generate_response(pred)
             label_text = self.observation['labels'][0]
-            label_text = self.word_dict.detokenize(label_text.split())
+            label_text = self.preps.words.detokenize(label_text.split())
 
             # update metrics
             self.metrics.n_examples += 1
@@ -154,18 +161,18 @@ class HybridCodeNetworkAgent(Agent):
                 print("----episode done----")
 
         # tokenize input
-        tokens = self.word_dict.tokenize(ex['text'])
+        tokens = self.preps.words.tokenize(ex['text'])
 
         # store database results
         if is_api_answer(ex['text']) and not is_null_api_answer(ex['text']):
-            self.word_dict.update_database(ex['text'])
+            self.preps.update_database(ex['text'])
             if self.opt['debug']:
                 print("Updating database with api response: ", ex['text'])
 
         # Bag of words features
-        bow_features = np.zeros(len(self.word_dict), dtype=np.float32)
+        bow_features = np.zeros(len(self.preps.words), dtype=np.float32)
         for t in tokens:
-            bow_features[self.word_dict[t]] = 1.
+            bow_features[self.preps.words[t]] = 1.
         # Text entity features
         prev_entities = self.ent_tracker.categ_features()
         if not is_api_answer(ex['text']):
@@ -191,8 +198,8 @@ class HybridCodeNetworkAgent(Agent):
             is_silence(ex['text']),
             sum(binary_features),
             sum(diff_features),
-            bool(self.word_dict.database.search(self.ent_tracker.entities))*1.,
-            bool(self.word_dict.database.search(
+            bool(self.preps.database.search(self.ent_tracker.entities))*1.,
+            bool(self.preps.database.search(
                 {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
             self.api_just_called * 1.,
             (self.api_just_called and bool(self.current_result)) * 1.,
@@ -218,7 +225,7 @@ class HybridCodeNetworkAgent(Agent):
         action_mask = np.ones(self.n_actions, dtype=np.float32)
         if self.opt['action_mask']:
             for a_id in range(self.n_actions):
-                action = self.word_dict.get_action_by_id(a_id)
+                action = self.preps.actions[int(a_id)]
                 if 'api_call' not in action:
                     for entity in re.findall('R_[a-z_]*', action):
                         if (entity not in self.ent_tracker.entities) and \
@@ -231,9 +238,9 @@ class HybridCodeNetworkAgent(Agent):
         targets = []
         for label in ex.get('labels', []):
             try:
-                template = self.ent_tracker.extract_entity_types(
-                        self.word_dict.tokenize(label))
-                action = self.word_dict.get_action_id(template)
+                template = self.preps.actions.get_template(
+                    self.preps.words.tokenize(label))
+                action = self.preps.actions[template]
             except:
                 raise RuntimeError('Invalid label. Should match one of'
                                    'action templates from train.')
@@ -245,8 +252,8 @@ class HybridCodeNetworkAgent(Agent):
         # take only first label
         action = targets[0][1]
         if self.opt['debug'] and (action_mask[action] < 1):
-            template = self.ent_tracker.extract_entity_types(
-                            self.word_dict.tokenize(label))
+            template = self.preps.actions.get_template(
+                            self.preps.words.tokenize(label))
             print("True action forbidden in action_mask: ",
                   targets[0], template)
 
@@ -257,11 +264,11 @@ class HybridCodeNetworkAgent(Agent):
         Convert action template id and entities from tracker
         to final response.
         """
-        template = self.word_dict.get_action_by_id(action_id)
+        template = self.preps.actions[int(action_id)]
 
         # is api request
         if 'api_call' in template:
-            self.database_results = self.word_dict.database.search(
+            self.database_results = self.preps.database.search(
                     self.ent_tracker.entities,
                     order_by='R_rating', ascending=False)
             self.api_just_called, self.api_called = True, True

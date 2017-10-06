@@ -23,15 +23,13 @@ def add_cmdline_args(parser):
     agent.add_argument('--random_seed', type=int, default=123098)
 
     # Basics
-    agent.add_argument('--embedding-file', type=str, default=None,
-                       help='File of space separated embeddings: w e1 .. ed')
     agent.add_argument('--pretrained-model', type=str, default=None,
                        help='Load dict/features/weights/opts from '
                        'the file prefix')
     agent.add_argument('--log-file', type=str, default=None)
-    agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],
-                       help='Type of entity tracker to use. Implemented only '
-                       'for dialog_babi5 and dialog_babi6.')
+# agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],
+#                   help='Type of entity tracker to use. Implemented only '
+#                   'for dialog_babi5 and dialog_babi6.')
 
     # Model specification
     agent.add_argument('--learning-rate', type=float, default=.1)
