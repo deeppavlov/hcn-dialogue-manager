@@ -29,10 +29,12 @@ class HybridCodeNetworkModel(object):
     def __init__(self, opt):
         self.opt = copy.deepcopy(opt)
 
+        # zero state
+        self.reset_state()
         if self.opt.get('pretrained_model'):
             print("[ Initializing model from `{}` ]"
                   .format(self.opt['pretrained_model']))
-            # restore state, parameters and session
+            # restore parameters and session
             self.restore(self.opt['pretrained_model'])
         else:
             print("[ Initializing model from scratch ]")
@@ -43,8 +45,6 @@ class HybridCodeNetworkModel(object):
             # initialize session
             self._sess = tf.Session()
             self._sess.run(tf.global_variables_initializer())
-            # zero state
-            self.reset_state()
 
     def __init_params__(self, params=None):
         params = params or self.opt
@@ -158,7 +158,7 @@ class HybridCodeNetworkModel(object):
         return probs, prediction
 
     def restore(self, fname=None):
-        """Restore graph, important operations and state"""
+        """Restore graph, important operations and options"""
         fname = fname or self.opt['pretrained_model']
         json_fname = "{}.json".format(fname)
         meta_fname = "{}.meta".format(fname)
@@ -191,12 +191,10 @@ class HybridCodeNetworkModel(object):
             self._train_op = _graph.get_collection('train_op')[0]
             self._step = _graph.get_collection('global_step')[0]
 
-            # restore state
+            # init params
             if os.path.isfile(json_fname):
                 with open(json_fname, 'r') as f:
-                    params, (state_c, state_h) = json.load(f)
-                    self.state_c = np.array(state_c, dtype=np.float32)
-                    self.state_h = np.array(state_h, dtype=np.float32)
+                    params = json.load(f)
                     self.__init_params__(params)
             else:
                 print("[{} not found]".format(json_fname))
@@ -209,7 +207,7 @@ class HybridCodeNetworkModel(object):
         """
         Store
             - graph in <fname>.meta
-            - parameters and state in <fname>.json
+            - parameters in <fname>.json
         """
         step = tf.train.global_step(self._sess, self._step)
         # meta_fname = "{}-{}.meta".format(fname, step)
@@ -222,13 +220,10 @@ class HybridCodeNetworkModel(object):
         _saver = tf.train.Saver()
         _saver.save(self._sess, fname)  # , global_step=step)
 
-        # save state and options
+        # save options
         print("[saving options to {}]".format(json_fname))
         with open(json_fname, 'w') as f:
-            json.dump(
-                (self.opt, (self.state_c.tolist(), self.state_h.tolist())),
-                f
-            )
+            json.dump(self.opt, f)
 
     def shutdown(self):
         self._sess.close()
