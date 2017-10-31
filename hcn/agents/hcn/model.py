@@ -29,8 +29,6 @@ class HybridCodeNetworkModel(object):
     def __init__(self, opt):
         self.opt = copy.deepcopy(opt)
 
-        # zero state
-        self.reset_state()
         if self.opt.get('pretrained_model'):
             print("[ Initializing model from `{}` ]"
                   .format(self.opt['pretrained_model']))
@@ -45,6 +43,9 @@ class HybridCodeNetworkModel(object):
             # initialize session
             self._sess = tf.Session()
             self._sess.run(tf.global_variables_initializer())
+
+        # zero state
+        self.reset_state()
 
     def __init_params__(self, params=None):
         params = params or self.opt

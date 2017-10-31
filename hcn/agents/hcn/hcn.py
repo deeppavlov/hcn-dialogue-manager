@@ -88,7 +88,7 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 11 + len(self.preps.words) + \
+        opt['obs_size'] = 12 + len(self.preps.words) + \
             2 * self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt)
@@ -143,13 +143,6 @@ class HybridCodeNetworkAgent(Agent):
                 print("Probs = {}, pred = {}".format(probs, pred))
             reply['text'] = self._generate_response(pred)
 
-        return reply
-
-    def _build_ex(self, ex):
-        # check if empty input (end of epoch)
-        if 'text' not in ex:
-            return
-
         # reinitilize entity tracker for new dialog
         if self.episode_done:
             self.ent_tracker.restart()
@@ -157,8 +150,16 @@ class HybridCodeNetworkAgent(Agent):
             self.current_result = None
             self.prev_action *= 0.
             self.api_called, self.api_just_called = False, False
+            self.model.reset_state()
             if self.opt['debug']:
                 print("----episode done----")
+
+        return reply
+
+    def _build_ex(self, ex):
+        # check if empty input (end of epoch)
+        if 'text' not in ex:
+            return
 
         # tokenize input
         tokens = self.preps.words.tokenize(ex['text'])
@@ -199,6 +200,7 @@ class HybridCodeNetworkAgent(Agent):
             sum(binary_features),
             sum(diff_features),
             bool(self.preps.database.search(self.ent_tracker.entities))*1.,
+            (not self.preps.database.search(self.ent_tracker.entities))*1.,
             bool(self.preps.database.search(
                 {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
             self.api_just_called * 1.,
@@ -215,6 +217,7 @@ class HybridCodeNetworkAgent(Agent):
             print("Entity features = ", ent_features)
             print("Current result =", self.current_result)
             print("Context features = ", context_features)
+        #context_features = np.array([], dtype=np.float32)
         features = np.hstack((
             bow_features, ent_features, context_features, self.prev_action
             ))[np.newaxis, :]
@@ -226,6 +229,8 @@ class HybridCodeNetworkAgent(Agent):
         if self.opt['action_mask']:
             for a_id in range(self.n_actions):
                 action = self.preps.actions[int(a_id)]
+                #if self.opt['debug']:
+                #    print("Id {} -> template '{}'".format(a_id, action))
                 if 'api_call' not in action:
                     for entity in re.findall('R_[a-z_]*', action):
                         if (entity not in self.ent_tracker.entities) and \
@@ -241,6 +246,9 @@ class HybridCodeNetworkAgent(Agent):
                 template = self.preps.actions.get_template(
                     self.preps.words.tokenize(label))
                 action = self.preps.actions[template]
+                #if self.opt['debug']:
+                #    print("Label '{}' -> template '{}' -> id {}"
+                #        .format(label, template, action))
             except:
                 raise RuntimeError('Invalid label. Should match one of'
                                    'action templates from train.')
