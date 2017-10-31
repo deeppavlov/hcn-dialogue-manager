@@ -97,6 +97,8 @@ class WordDictionaryAgent(SpacyDictionaryAgent):
         self.opt = copy.deepcopy(opt)
         if self.opt.get('dict_file'):
             self.opt['dict_file'] = self.opt['dict_file'] + '.words'
+        elif self.opt.get('model_file'):
+            self.opt['dict_file'] = self.opt['model_file'] + '.dict.words'
         super().__init__(self.opt, shared)
 
         # index words in embedding file
@@ -166,6 +168,8 @@ class ActionDictionaryAgent(SpacyDictionaryAgent):
             self.opt['dict_file'] = opt['action_file']
         elif opt.get('dict_file'):
             self.opt['dict_file'] = opt['dict_file'] + '.actions'
+        elif opt.get('model_file'):
+            self.opt['dict_file'] = opt['model_file'] + '.dict.actions'
         super().__init__(self.opt, shared)
         '''if shared:
             self.freq = shared.get('freq', {})

@@ -24,7 +24,7 @@ def add_cmdline_args(parser):
 
     # Basics
     agent.add_argument('--pretrained-model', type=str, default=None,
-                       help='Load dict/features/weights/opts from '
+                       help='Load dict/features/weights/opts/database from '
                        'the file prefix')
     agent.add_argument('--log-file', type=str, default=None)
 # agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],

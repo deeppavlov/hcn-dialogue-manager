@@ -223,10 +223,13 @@ class Babi6EntityTracker(EntityTracker):
 
     @classmethod
     def extract_entity_types(cls, tokens):
-        if tokens[:6] == ['Would', 'you', 'like', 'something', 'in', 'the']:
-            return tokens
         new_tokens = []
         for token in tokens:
             ent_type = cls.entity2type(token)
             new_tokens.append(str(ent_type or token))
+        # do not extract types for patterns 'Would you like <type> or <type>?'
+        if (tokens.count('or') > 0) and\
+            ((new_tokens.count(str(cls.EntType.R_location)) > 1) or
+             (new_tokens.count(str(cls.EntType.R_price)) > 1)):
+            return tokens
         return new_tokens

@@ -37,8 +37,13 @@ class HCNPreprocessAgent(Agent):
 
         # database
         self.database = None
-        if not shared and opt.get('model_file'):
+        database_file = None
+        if opt.get('model_file'):
             database_file = opt['model_file'] + '.db'
+        elif opt.get('pretrained_model'):
+            database_file = opt['pretrained_model'] + '.db'
+        if not shared and database_file:
+            print('[ Initializing database simulator. ]')
             self.database = DatabaseSimulator(database_file)
 
         # initialize entity tracker
