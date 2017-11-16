@@ -2,7 +2,7 @@
 
 # display data example
 python3 ./utils/display_data.py -t dialog_babi:task:6 -n 10
-DATASETS_URL=file://path/to/dstc2.tar.gz\
+DATASETS_URL=http://share.ipavlov.mipt.ru:8080/repository/datasets/\
     python3 ./utils/display_data.py -t dstc2 --datatype train:ordered -n 10
 
 # build directory

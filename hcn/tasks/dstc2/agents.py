@@ -31,7 +31,9 @@ def _path(opt):
     if dt == 'train':
         suffix = 'trn'
     elif dt == 'valid':
-        suffix = 'dev'
+        suffix = 'val'
+    elif dt ==  'test':
+        suffix = 'tst'
     datafile = os.path.join(prefix, 'dstc2-{type}.jsonlist'.format(type=suffix))
     tmpls_datafile = os.path.join(prefix, 'dstc2-templates.txt')
     cands_datafile = os.path.join(prefix, 'dstc2-cands.txt')
