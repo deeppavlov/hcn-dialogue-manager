@@ -17,7 +17,8 @@ limitations under the License.
 import parlai.core.build_data as build_data
 import os
 import urllib
-
+import pickle
+import json
 
 def build(opt):
     dpath = os.path.join(opt['datapath'], 'dstc2')
@@ -39,7 +40,30 @@ def build(opt):
             build_data.move(url[7:], dpath)
         else:
             build_data.download(url, dpath, filename)
-        build_data.untar(dpath, filename)
+        build_data.untar(dpath, filename, deleteTar=False)
+
+        # Read data and create dictionary of intents
+        print("[loading dstc2-dialog data:" + dpath + " to create dictionary of intents]")
+        all_intents = []
+        with open(os.path.join(dpath, 'dstc2-trn.jsonlist')) as read:
+            for line in read:
+                line = line.strip()
+                # if empty line - it is the end of dialog
+                if not line:
+                    continue
+
+                replica = json.loads(line)
+                if 'goals' not in replica.keys():
+                    # bot reply
+                    continue
+                if replica['dialog-acts']:
+                    for act in replica['dialog-acts']:
+                        for slot in act['slots']:
+                            all_intents.append(act['act'] + '_' + slot[0] + '_' + slot[1])
+
+        intents = set(all_intents)
+        with open(os.path.join(dpath, "intents.txt"), "wb") as fp:  # Pickling
+            pickle.dump(intents, fp)
 
         # Mark the data as built.
         build_data.mark_done(dpath, version_string=version)
