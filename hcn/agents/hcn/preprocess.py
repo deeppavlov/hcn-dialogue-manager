@@ -19,8 +19,6 @@ from parlai.core.dict import DictionaryAgent, Agent
 from .utils import normalize_text
 from .utils import is_api_answer, is_null_api_answer, iter_api_response
 from .dict import WordDictionaryAgent, ActionDictionaryAgent
-from .entities import Babi5EntityTracker, Babi6EntityTracker
-from .database import DatabaseSimulator
 
 
 class HCNPreprocessAgent(Agent):
@@ -35,46 +33,18 @@ class HCNPreprocessAgent(Agent):
     def __init__(self, opt, shared=None):
         self.id = self.__class__.__name__
 
-        # database
-        self.database = None
-        database_file = None
-        if opt.get('model_file'):
-            database_file = opt['model_file'] + '.db'
-        elif opt.get('pretrained_model'):
-            database_file = opt['pretrained_model'] + '.db'
-        if not shared and database_file:
-            print('[ Initializing database simulator. ]')
-            self.database = DatabaseSimulator(database_file)
-
-        # initialize entity tracker
-        self.tracker = None
-        if opt['tracker'] == 'babi5':
-            self.tracker = Babi5EntityTracker
-        elif opt['tracker'] == 'babi6':
-            self.tracker = Babi6EntityTracker
-
         # intialize action dictionary
         self.actions = ActionDictionaryAgent(opt, shared)
 
         # initialize word dictionary
         self.words = WordDictionaryAgent(opt, shared)
 
-    def update_database(self, text):
-        if not is_null_api_answer(text):
-            self.database.insert_many(list(iter_api_response(text)))
-
     def act(self):
         """
             - Add words passed in the 'text' field of the observation to
         the dictionary,
             - extract action templates from all 'label_candidates' once
-            - update database from api responses in 'text' field.
         """
-        # if utterance is an api response, update database
-        text = self.observation.get('text')
-        if text and is_api_answer(text):
-                self.update_database(text)
-
         # add to word dict
         self.words.observe(self.observation)
         self.words.act()

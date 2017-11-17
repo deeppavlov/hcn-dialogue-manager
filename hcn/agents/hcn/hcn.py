@@ -20,11 +20,10 @@ import re
 
 from parlai.core.agents import Agent
 
+from . import entities
 from . import config
 from .model import HybridCodeNetworkModel
 from .preprocess import HCNPreprocessAgent
-from .database import DatabaseSimulator
-from .entities import Babi5EntityTracker, Babi6EntityTracker
 from .utils import is_silence, is_null_api_answer, is_api_answer
 from .metrics import DialogMetrics
 
@@ -68,27 +67,27 @@ class HybridCodeNetworkAgent(Agent):
         # initialize entity tracker
         self.ent_tracker = None
         if self.opt['tracker'] == 'babi5':
-            self.ent_tracker = Babi5EntityTracker()
+            self.ent_tracker = entities.Babi5EntityTracker()
         elif self.opt['tracker'] == 'babi6':
-            self.ent_tracker = Babi6EntityTracker()
+            self.ent_tracker = entities.Babi6EntityTracker()
+        elif self.opt['tracker'] == 'dstc2':
+            self.ent_tracker = entities.DSTC2EntityTracker()
 
         # initialize word dictionary and action templates
         self.preps = HybridCodeNetworkAgent.dictionary_class()(opt)
 
         # intialize parameters
         self.is_shared = False
-        self.database_results = []
-        self.current_result = None
+        self.db_result = None
         self.n_actions = len(self.preps.actions)
         self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
-        self.api_called, self.api_just_called = False, False
 
         # initialize metrics
         self.metrics = DialogMetrics(self.n_actions)
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 12 + len(self.preps.words) + \
+        opt['obs_size'] = 9 + len(self.preps.words) + \
             2 * self.ent_tracker.num_features + self.n_actions
 
         self.model = HybridCodeNetworkModel(opt)
@@ -98,6 +97,8 @@ class HybridCodeNetworkAgent(Agent):
         # observation = copy.deepcopy(observation)
         self.observation = observation
         self.episode_done = observation['episode_done']
+        if observation.get('db_result') is not None:
+            self.db_result = observation['db_result'] 
         return observation
 
     def act(self):
@@ -146,10 +147,8 @@ class HybridCodeNetworkAgent(Agent):
         # reinitilize entity tracker for new dialog
         if self.episode_done:
             self.ent_tracker.restart()
-            self.database_results = []
-            self.current_result = None
+            self.db_result = None
             self.prev_action *= 0.
-            self.api_called, self.api_just_called = False, False
             self.model.reset_state()
             if self.opt['debug']:
                 print("----episode done----")
@@ -163,12 +162,6 @@ class HybridCodeNetworkAgent(Agent):
 
         # tokenize input
         tokens = self.preps.words.tokenize(ex['text'])
-
-        # store database results
-        if is_api_answer(ex['text']) and not is_null_api_answer(ex['text']):
-            self.preps.update_database(ex['text'])
-            if self.opt['debug']:
-                print("Updating database with api response: ", ex['text'])
 
         # Bag of words features
         bow_features = np.zeros(len(self.preps.words), dtype=np.float32)
@@ -199,23 +192,21 @@ class HybridCodeNetworkAgent(Agent):
             is_silence(ex['text']),
             sum(binary_features),
             sum(diff_features),
-            bool(self.preps.database.search(self.ent_tracker.entities))*1.,
-            (not self.preps.database.search(self.ent_tracker.entities))*1.,
-            bool(self.preps.database.search(
-                {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
-            self.api_just_called * 1.,
-            (self.api_just_called and bool(self.current_result)) * 1.,
-            (self.api_just_called and not self.current_result) * 1.,
-            self.api_called * 1.,
-            bool(self.current_result) * 1.,
-            (self.api_called and not self.current_result) * 1.
-            # is_api_answer(ex['text']),
-            # is_null_api_answer(ex['text'])],
+            #bool(self.preps.database.search(self.ent_tracker.entities))*1.,
+            #(not self.preps.database.search(self.ent_tracker.entities))*1.,
+            #bool(self.preps.database.search(
+            #    {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
+            (self.observation.get('db_result') is None) * 1.,
+            (self.observation.get('db_result') is not None) * 1.,
+            (self.db_result is None) * 1.,
+            (self.db_result is not None) * 1.,
+            (self.db_result == {}) * 1.,
+            bool(self.db_result) * 1.
             ], dtype=np.float32)
         if self.opt['debug']:
             print("Entities = ", self.ent_tracker.entities)
             print("Entity features = ", ent_features)
-            print("Current result =", self.current_result)
+            print("Current db result =", self.db_result)
             print("Context features = ", context_features)
         #context_features = np.array([], dtype=np.float32)
         features = np.hstack((
@@ -231,11 +222,10 @@ class HybridCodeNetworkAgent(Agent):
                 action = self.preps.actions[int(a_id)]
                 #if self.opt['debug']:
                 #    print("Id {} -> template '{}'".format(a_id, action))
-                if 'api_call' not in action:
-                    for entity in re.findall('R_[a-z_]*', action):
-                        if (entity not in self.ent_tracker.entities) and \
-                                (entity not in (self.current_result or {})):
-                            action_mask[a_id] = 0.
+                for entity in re.findall('R_[a-z_]*', action):
+                    if (entity not in self.ent_tracker.entities) and \
+                            (entity not in (self.db_result or {})):
+                        action_mask[a_id] = 0.
         if self.opt['debug']:
             print("Action_mask shape = ", action_mask.shape)
 
@@ -273,30 +263,18 @@ class HybridCodeNetworkAgent(Agent):
         to final response.
         """
         template = self.preps.actions[int(action_id)]
+        #if self.database_results and (self.opt['tracker'] == 'babi6'):
+        #    self.db_result = self.database_results[0]
 
-        # is api request
-        if 'api_call' in template:
-            self.database_results = self.preps.database.search(
-                    self.ent_tracker.entities,
-                    order_by='R_rating', ascending=False)
-            self.api_just_called, self.api_called = True, True
-            if self.opt['debug']:
-                print("Looking for {} in database.".format(
-                      self.ent_tracker.entities))
-                print("DatabaseSimulator results = ", self.database_results)
-            if self.database_results and (self.opt['tracker'] == 'babi6'):
-                self.current_result = self.database_results.pop(0)
-        else:
-            self.api_just_called = False
-            if self.current_result is not None:
-                for k, v in self.current_result.items():
-                    template = template.replace(k, str(v))
+        if self.db_result is not None:
+            for k, v in self.db_result.items():
+                template = template.replace(k, str(v))
         # is restaurant offering
-        if self.database_results:
-            if (self.opt['tracker'] == 'babi5') and (action_id == 12):
-                self.current_result = self.database_results.pop(0)
-                if self.opt['debug']:
-                    print("API best response = ", self.current_result)
+        #if self.database_results\
+        #   and (self.opt['tracker'] == 'babi5') and (action_id == 12):
+        #        self.db_result = self.database_results.pop(0)
+        #        if self.opt['debug']:
+        #            print("API best response = ", self.db_result)
 
         return self.ent_tracker.fill_entities(template)
 
