@@ -35,16 +35,15 @@ def _path(opt):
     elif dt ==  'test':
         suffix = 'tst'
     datafile = os.path.join(prefix, 'dstc2-{type}.jsonlist'.format(type=suffix))
-    tmpls_datafile = os.path.join(prefix, 'dstc2-templates.txt')
     cands_datafile = os.path.join(prefix, 'dstc2-cands.txt')
 
-    return datafile, tmpls_datafile, cands_datafile
+    return datafile, cands_datafile
 
 
 class DefaultTeacher(DSTC2Teacher):
     def __init__(self, opt, shared=None):
         opt = copy.deepcopy(opt)
         paths = _path(opt)
-        opt['datafile'], opt['template_datafile'], opt['cands_datafile'] = paths
+        opt['datafile'], opt['cands_datafile'] = paths
         super().__init__(opt, shared)
 
