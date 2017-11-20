@@ -24,7 +24,7 @@ import numpy as np
 import sklearn.model_selection
 from keras.optimizers import Adam, SGD
 from keras.callbacks import EarlyStopping
-from metrics import fmeasure
+
 from sklearn.metrics import precision_recall_fscore_support, f1_score
 
 import sys
@@ -32,100 +32,72 @@ sys.path.append('/home/dilyara/Documents/GitHub/general_scripts')
 from random_search_class import param_gen
 from save_load_model import init_from_scratch, init_from_saved, save
 from fasttext_embeddings import text2embeddings
+from metrics import fmeasure
+
+from .embeddings_dict import EmbeddingsDict
+from .intent_recognition_model import IntentRecognitionModel
+import copy
 
 
-def one_hot2ids(one_hot_labels):
-    return np.argmax(one_hot_labels, axis=1)
+class IntentRecognizerAgent(object):
+
+    def __init__(self, opt, shared=None):
+        """Initialize the class according to the given parameters in opt."""
+        if opt['numthreads'] > 1:
+            raise RuntimeError("numthreads > 1 not supported for this model.")
+
+        self.id = self.__class__.__name__
+        super().__init__(opt, shared)
+        # to keep track of the episode
+        self.episode_done = True
+
+        # only create an empty dummy class when sharing
+        if shared is not None:
+            self.is_shared = True
+            return
+
+        # intialize parameters
+        self.is_shared = False
+        self.opt = copy.deepcopy(opt)
+        embedding_dict = EmbeddingsDict(self.opt, self.opt.get('embedding_dim'))
+
+        self.model = IntentRecognitionModel(opt=self.opt, embedding_dict=embedding_dict)
+        self.n_examples = 0
+        print('___IntentRecognizerAgent and Model initialized___')
+
+        # {'text': '<SILENCE>',
+        # 'labels': ('Hello, welcome to the Cambridge restaurant system. You can ask for restaurants by area, price range or food type. How may I help you?',),
+        # 'act': 'welcomemsg',
+        # 'slots': [],
+        # 'label_candidates': {'Eraina is a nice place in the centre of town and the prices are expensive.',
+        # 'The price range at the nirala is moderate.', ...}
+
+    def observe(self, observation):
+        """Receive an observation/action dict."""
+        # observation = copy.deepcopy(observation)
+        self.observation = observation
+        self.episode_done = observation['episode_done']
+        return observation
 
 
-class IntentRecognizer(object):
+    def _build_ex(self, ex):
+        # check if empty input (end of epoch)
+        if 'text' not in ex:
+            return
 
-    # data - list or array of strings-request len = N_samples
-    # classes - np.array of one-hot classes N_samples x n_classes
+        inputs = dict()
+        inputs['question'] = ex['text']
+        if 'labels' in ex:
+            action = ex['act']
+            slots = ex['slots']
 
-    # IF to_use_kfold = False:
-    # data - list of lists or arrays of strings-request len = N_samples
-    # classes - list of arrays of one-hot classes N_samples x n_classes
 
-    def __init__(self, intents, n_splits=None, fasttext_embedding_model=None):
+            inputs['labels'] =
 
-        self.intents = intents
-        self.X_train = []
-        self.X_test = []
-        self.y_train = []
-        self.y_test = []
-        self.network_parameters = None
-        self.learning_parameters = None
-        self.n_classes = len(intents)
-        self.n_splits = n_splits
-        self.tag_size = None
-        self.text_size = None
-        self.embedding_size = None
-        self.kernel_sizes = None
-        self.models = None
-        self.model_function = None
-        self.histories = None
-        self.fasttext_embedding_model = None
+        return inputs
 
-        if fasttext_embedding_model is not None:
-            print("___Fasttext embedding model is loaded___")
-            self.fasttext_embedding_model = fasttext_embedding_model
-        print('___Recognizer initialized___')
 
-    def gener_network_parameters(self, **kwargs):
-        print("___Considered network parameters___")
-        self.network_parameters = []
-        for i in range(self.n_splits):
-            self.network_parameters.append(param_gen(**kwargs))    #generated dict
-            print(self.network_parameters[-1])
-        return True
-
-    def gener_learning_parameters(self, **kwargs):
-        print("___Considered learning parameters___")
-        self.learning_parameters = []
-        for i in range(self.n_splits):
-            self.learning_parameters.append(param_gen(**kwargs))   #generated dict
-            print(self.learning_parameters[-1])
-        return True
-
-    def init_network_parameters(self, arg_list):
-        print("___Considered network parameters___")
-        self.network_parameters = arg_list                 #dict
-        print(self.network_parameters)
-        return True
-
-    def init_learning_parameters(self, arg_list):
-        print("___Considered learning parameters___")
-        self.learning_parameters = arg_list                #dict
-        print(self.learning_parameters)
-        return True
-
-    def init_model(self, model_function, text_size, embedding_size, kernel_sizes, add_network_params=None):
-        self.model_function = model_function
-        print("___Model initialized____")
-        if self.network_parameters is None:
-            print("___ERROR: network parameters are not given___")
-            exit(1)
-
-        self.text_size = text_size
-        self.embedding_size = embedding_size
-        self.kernel_sizes = kernel_sizes
-
-        self.models = []
-        for model_ind in range(self.n_splits):
-            if add_network_params is not None:
-                self.models.append(init_from_scratch(self.model_function, text_size=self.text_size, n_classes=self.n_classes,
-                                                     embedding_size=self.embedding_size,
-                                                     kernel_sizes=self.kernel_sizes,
-                                                     **add_network_params,
-                                                     **(self.network_parameters[model_ind])))
-            else:
-                self.models.append(init_from_scratch(self.model_function, text_size=self.text_size, n_classes=self.n_classes,
-                                                     embedding_size=self.embedding_size,
-                                                     kernel_sizes=self.kernel_sizes,
-                                                     **(self.network_parameters[model_ind])))
-        return True
-
+#------------------------------
     def fit_model(self, data, classes, to_use_kfold=False, verbose=True,
                   add_inputs=None, class_weight=None, shuffle=False):
         print("___Fitting model___")
@@ -264,6 +236,9 @@ class IntentRecognizer(object):
                 tag_table.append(request_tags)
             list_of_tag_tables.append(tag_table)
         return list_of_tag_tables
+
+    def one_hot2ids(self,one_hot_labels):
+        return np.argmax(one_hot_labels, axis=1)
 
 
 

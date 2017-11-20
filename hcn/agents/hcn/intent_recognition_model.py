@@ -53,16 +53,16 @@ tf.set_random_seed(SEED)
 
 class IntentRecognitionModel(object):
 
-    def __init__(self, opt):
+    def __init__(self, opt, embedding_dict=None):
 
-        self.embedding_dict = None
         self.opt = copy.deepcopy(opt)
         self.kernel_sizes = [int(x) for x in opt['kernel_sizes_cnn'].split(' ')]
         self.from_saved = False
         np.random.seed(opt['model_seed'])
         tf.set_random_seed(opt['model_seed'])
 
-        self.embedding_dict = EmbeddingsDict(opt, self.opt['embedding_dim'])
+        self.embedding_dict = embedding_dict if embedding_dict is not None \
+            else EmbeddingsDict(opt, self.opt['embedding_dim'])
 
         if self.opt.get('model_file') and (os.path.isfile(opt['model_file'] + '.h5')) and \
                 (os.path.isfile(opt['model_file'] + '_opt.json')):
@@ -127,14 +127,12 @@ class IntentRecognitionModel(object):
             self.model.load_weights(fname + '.h5')
 
     def _build_ex(self, ex):
-
         if 'text' not in ex:
             return
         inputs = dict()
         inputs['question'] = ex['text']
         if 'labels' in ex:
             inputs['labels'] = ex['labels']
-
         return inputs
 
     def _predictions2text(self, predictions):
@@ -148,29 +146,17 @@ class IntentRecognitionModel(object):
         return y
 
     def _batchify(self, batch, word_dict=None):
-        if self.model_type == 'nn':
-            question = []
-            for ex in batch:
-                question.append(ex['question'])
-            self.embedding_dict.add_items(question)
-            embedding_batch = self.create_batch(question)
+        question = []
+        for ex in batch:
+            question.append(ex['question'])
+        self.embedding_dict.add_items(question)
+        embedding_batch = self.create_batch(question)
 
-            if len(batch[0]) == 2:
-                y = [1 if ex['labels'][0] == 'Insult' else 0 for ex in batch]
-                return embedding_batch, y
-            else:
-                return embedding_batch
-
-        if self.model_type == 'ngrams':
-            question = []
-            for ex in batch:
-                question.append(ex['question'])
-
-            if len(batch[0]) == 2:
-                y = [1 if ex['labels'][0] == 'Insult' else 0 for ex in batch]
-                return question, y
-            else:
-                return question
+        if len(batch[0]) == 2:
+            y = self._text2predictions([ex['labels'][0] for ex in batch])
+            return embedding_batch, y
+        else:
+            return embedding_batch
 
     def create_batch(self, sentence_li):
         embeddings_batch = []

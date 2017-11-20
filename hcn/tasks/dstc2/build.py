@@ -59,7 +59,7 @@ def build(opt):
                 if replica['dialog-acts']:
                     for act in replica['dialog-acts']:
                         for slot in act['slots']:
-                            all_intents.append(act['act'] + '_' + slot[0] + '_' + slot[1])
+                            all_intents.append(act['act'] + '_' + slot[1])
 
         intents = set(all_intents)
         with open(os.path.join(dpath, "intents.txt"), "wb") as fp:  # Pickling
