@@ -20,8 +20,8 @@ import re
 
 from parlai.core.dict import DictionaryAgent
 
+from . import entities
 from .utils import filter_service_words, babi6_dirty_fix
-from .entities import Babi5EntityTracker, Babi6EntityTracker
 
 
 NLP = spacy.load('en')
@@ -36,7 +36,7 @@ class SpacyDictionaryAgent(DictionaryAgent):
     def add_cmdline_args(argparser):
         DictionaryAgent.add_cmdline_args(argparser)
         argparser.add_argument(
-            '--tracker', required=True, choices=['babi5', 'babi6'],
+            '--tracker', required=True, choices=['babi5', 'babi6', 'dstc2'],
             help='Type of entity tracker to use. Implemented only '
                  'for dialog_babi5 and dialog_babi6.')
         return argparser
@@ -183,9 +183,11 @@ class ActionDictionaryAgent(SpacyDictionaryAgent):
         # entity tracker class methods
         self.tracker = None
         if self.opt['tracker'] == 'babi5':
-            self.tracker = Babi5EntityTracker
+            self.tracker = entities.Babi5EntityTracker
         elif self.opt['tracker'] == 'babi6':
-            self.tracker = Babi6EntityTracker
+            self.tracker = entities.Babi6EntityTracker
+        elif self.opt['tracker'] == 'dstc2':
+            self.tracker = entities.DSTC2EntityTracker
 
         # properties
         self.label_candidates = False
