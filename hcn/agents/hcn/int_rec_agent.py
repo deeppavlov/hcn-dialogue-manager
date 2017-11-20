@@ -20,6 +20,8 @@ config.gpu_options.allow_growth = True
 config.gpu_options.visible_device_list = '0'
 set_session(tf.Session(config=config))
 
+from parlai.core.agents import Agent
+
 import numpy as np
 import sklearn.model_selection
 from keras.optimizers import Adam, SGD
@@ -35,11 +37,18 @@ from fasttext_embeddings import text2embeddings
 from metrics import fmeasure
 
 from .embeddings_dict import EmbeddingsDict
-from .intent_recognition_model import IntentRecognitionModel
+from .int_rec_model import IntentRecognitionModel
 import copy
+import pickle
+from . import config
+import os, sys
 
+class IntentRecognizerAgent(Agent):
 
-class IntentRecognizerAgent(object):
+    @staticmethod
+    def add_cmdline_args(argparser):
+        """Add arguments from command line."""
+        config.add_cmdline_args(argparser)
 
     def __init__(self, opt, shared=None):
         """Initialize the class according to the given parameters in opt."""
@@ -59,18 +68,31 @@ class IntentRecognizerAgent(object):
         # intialize parameters
         self.is_shared = False
         self.opt = copy.deepcopy(opt)
+
+        self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
+                                                          'dstc2', 'intents.txt'), 'rb')))
+        self.intents.append('unknown')
+        self.n_classes = len(self.intents)
+        self.confident_threshold = opt['intent_threshold']
+
+
         embedding_dict = EmbeddingsDict(self.opt, self.opt.get('embedding_dim'))
 
         self.model = IntentRecognitionModel(opt=self.opt, embedding_dict=embedding_dict)
         self.n_examples = 0
         print('___IntentRecognizerAgent and Model initialized___')
 
-        # {'text': '<SILENCE>',
-        # 'labels': ('Hello, welcome to the Cambridge restaurant system. You can ask for restaurants by area, price range or food type. How may I help you?',),
-        # 'act': 'welcomemsg',
-        # 'slots': [],
-        # 'label_candidates': {'Eraina is a nice place in the centre of town and the prices are expensive.',
-        # 'The price range at the nirala is moderate.', ...}
+
+
+    def _predictions2text(self, predictions):
+        # predictions: n_samples x n_classes
+        y = [self.intents[np.where(sample > self.confident_threshold)[0]] for sample in predictions]
+        return y
+
+    def _text2predictions(self, predictions):
+        eye = np.eye(self.n_classes)
+        y = [np.sum([eye[class_id] for class_id in sample], axis=0) for sample in predictions]
+        return y
 
     def observe(self, observation):
         """Receive an observation/action dict."""
@@ -78,7 +100,6 @@ class IntentRecognizerAgent(object):
         self.observation = observation
         self.episode_done = observation['episode_done']
         return observation
-
 
     def _build_ex(self, ex):
         # check if empty input (end of epoch)
@@ -90,12 +111,43 @@ class IntentRecognizerAgent(object):
         if 'labels' in ex:
             action = ex['act']
             slots = ex['slots']
-
-
-            inputs['labels'] =
+            for slot in slots:
+                if slot[0] == 'slot':
+                    inputs['labels'] = action['act'] + '_' + slot[1]
+                else:
+                    inputs['labels'] = action['act'] + '_' + slot[0]
 
         return inputs
 
+    def act(self):
+        """Call batch act with batch of one sample."""
+        return self.batch_act([self.observation])[0]
+
+    def batch_act(self, observations):
+        """Train model or predict for given batch of observations."""
+        if self.is_shared:
+            raise RuntimeError("Parallel act is not supported.")
+
+        batch_size = len(observations)
+        # initialize a table of replies with this agent's id
+        batch_reply = [{'id': self.getID()} for _ in range(batch_size)]
+        predictions = [[] for _ in range(batch_size)]
+
+        examples = [self.model._build_ex(obs) for obs in observations]
+        valid_inds = [i for i in range(batch_size) if examples[i] is not None]
+        examples = [ex for ex in examples if ex is not None]
+
+        batch = self.model._batchify(examples)
+        prediction = self.model.predict(batch)
+        for i in range(len(prediction)):
+            predictions[valid_inds[i]].append(prediction[i])
+
+        for i in range(batch_size):
+            prediction = predictions[i]
+            batch_reply[i]['text'] = self._predictions2text([prediction])[0]
+            batch_reply[i]['score'] = prediction
+
+        return batch_reply
 
 #------------------------------
     def fit_model(self, data, classes, to_use_kfold=False, verbose=True,

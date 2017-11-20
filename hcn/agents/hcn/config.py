@@ -37,3 +37,17 @@ def add_cmdline_args(parser):
     agent.add_argument('--hidden-dim', type=int, default=128)
     agent.add_argument('--action-mask', type='bool', default=False,
                        help='Use action mask to put constrains on actions.')
+
+    agent.add_argument('--intent_threshold', type=float, default=0.5)
+    agent.add_argument('--kernel_sizes_cnn', type=str, default=None)
+    agent.add_argument('--model_seed', type=int, default=42)
+    agent.add_argument('--embedding_dim', type=int, default=100)
+    agent.add_argument('--fasttext_model', type=str, default=None)
+    agent.add_argument('--max_sequence_length', type=int, default=15)
+    agent.add_argument('--filters_cnn', type=int, default=100)
+    agent.add_argument('--regul_coef_conv', type=float, default=1e-4)
+    agent.add_argument('--regul_coef_dense', type=float, default=1e-4)
+    agent.add_argument('--dropout_rate', type=float, default=0.)
+    agent.add_argument('--dense_dim', type=int, default=100)
+    agent.add_argument('--learning_rate', type=float, default=1e-1)
+    agent.add_argument('--learning_decay', type=float, default=1e-1)

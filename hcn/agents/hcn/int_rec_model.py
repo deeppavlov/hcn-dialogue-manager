@@ -21,7 +21,7 @@ config.gpu_options.allow_growth=True
 config.gpu_options.visible_device_list = '0'
 set_session(tf.Session(config=config))
 
-from .metrics import roc_auc_score
+
 import os
 import numpy as np
 import copy
@@ -45,6 +45,7 @@ import json
 import pickle
 
 from .embeddings_dict import EmbeddingsDict
+from .metrics_f_auc import fmeasure, roc_auc_score
 
 SEED = 23
 np.random.seed(SEED)
@@ -63,6 +64,12 @@ class IntentRecognitionModel(object):
 
         self.embedding_dict = embedding_dict if embedding_dict is not None \
             else EmbeddingsDict(opt, self.opt['embedding_dim'])
+
+        self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
+                                                          'dstc2', 'intents.txt'), 'rb')))
+        self.intents.append('unknown')
+        self.n_classes = len(self.intents)
+        self.confident_threshold = opt['intent_threshold']
 
         if self.opt.get('model_file') and (os.path.isfile(opt['model_file'] + '.h5')) and \
                 (os.path.isfile(opt['model_file'] + '_opt.json')):
@@ -87,13 +94,7 @@ class IntentRecognitionModel(object):
         self.val_acc = 0.0
         self.val_auc = 0.0
 
-        self.intents = None
-        self.n_classes = None
-        self.confident_threshold = opt['confident_threshold']
-
-        with open(os.path.join(opt['datapath'], 'dstc2', "intents.txt"), "rb") as fp:
-            self.intents = pickle.load(fp)
-            self.n_classes = len(self.intents)
+        print("[ Model initialized ]")
 
     def _init_from_scratch(self):
         self.model = self.cnn_word_model()
@@ -123,8 +124,8 @@ class IntentRecognitionModel(object):
         self.model.compile(loss='categorical_crossentropy',
                            optimizer=optimizer,
                            metrics=['categorical_accuracy'])
-            print('[ Loading model weights %s ]' % fname)
-            self.model.load_weights(fname + '.h5')
+        print('[ Loading model weights %s ]' % fname)
+        self.model.load_weights(fname + '.h5')
 
     def _build_ex(self, ex):
         if 'text' not in ex:
@@ -142,17 +143,19 @@ class IntentRecognitionModel(object):
 
     def _text2predictions(self, predictions):
         eye = np.eye(self.n_classes)
+        print(predictions)
         y = [np.sum([eye[class_id] for class_id in sample], axis=0) for sample in predictions]
         return y
 
-    def _batchify(self, batch, word_dict=None):
+    def _batchify(self, batch):
         question = []
         for ex in batch:
             question.append(ex['question'])
         self.embedding_dict.add_items(question)
         embedding_batch = self.create_batch(question)
 
-        if len(batch[0]) == 2:
+        if len(batch[0]) > 1:
+            # train mode
             y = self._text2predictions([ex['labels'][0] for ex in batch])
             return embedding_batch, y
         else:
@@ -180,32 +183,17 @@ class IntentRecognitionModel(object):
     def update(self, batch):
         x, y = batch
         y = np.array(y)
-        y_pred = None
 
-        if self.model_type == 'nn':
-            self.train_loss, self.train_acc = self.model.train_on_batch(x, y)
-            y_pred = self.model.predict_on_batch(x).reshape(-1)
-            self.train_auc = roc_auc_score(y, y_pred)
-
-        if self.model_type == 'ngrams':
-            x = vectorize_select_from_data(x, self.vectorizers, self.selectors)
-            self.model.fit(x, y.reshape(-1))
-            y_pred = np.array(self.model.predict_proba(x)[:,1]).reshape(-1)
-            y_pred_tensor = K.constant(y_pred, dtype='float64')
-            self.train_loss = K.eval(binary_crossentropy(y.astype('float'), y_pred_tensor))
-            self.train_acc = K.eval(binary_accuracy(y.astype('float'), y_pred_tensor))
-            self.train_auc = roc_auc_score(y, y_pred)
+        self.train_loss, self.train_acc = self.model.train_on_batch(x, y)
+        y_pred = self.model.predict_on_batch(x).reshape(-1, self.n_classes)
+        self.train_auc = roc_auc_score(y, y_pred)
+        self.f1 = fmeasure(y, y_pred)
         self.updates += 1
         return y_pred
 
     def predict(self, batch):
-        if self.model_type == 'nn':
-            y_pred = np.array(self.model.predict_on_batch(batch)).reshape(-1)
-            return y_pred
-        if self.model_type == 'ngrams':
-            x = vectorize_select_from_data(batch, self.vectorizers, self.selectors)
-            predictions = np.array(self.model.predict_proba(x)[:,1]).reshape(-1)
-            return predictions
+        y_pred = np.array(self.model.predict_on_batch(batch)).reshape(-1, self.n_classes)
+        return y_pred
 
     def shutdown(self):
         self.embedding_dict = None
@@ -216,8 +204,9 @@ class IntentRecognitionModel(object):
 
         outputs = []
         for i in range(len(self.kernel_sizes)):
-            output_i = Conv1D(self.opt['filters_cnn'], kernel_size=self.kernel_sizes[i], activation=None,
-                              kernel_regularizer=l2(self.opt['regul_coef_conv']), padding='same')(inp)
+            output_i = Conv1D(self.opt['filters_cnn'], kernel_size=self.kernel_sizes[i],
+                              activation=None, kernel_regularizer=l2(self.opt['regul_coef_conv']),
+                              padding='same')(inp)
             output_i = BatchNormalization()(output_i)
             output_i = Activation('relu')(output_i)
             output_i = GlobalMaxPooling1D()(output_i)
@@ -232,9 +221,9 @@ class IntentRecognitionModel(object):
         output = BatchNormalization()(output)
         output = Activation('relu')(output)
         output = Dropout(rate=self.opt['dropout_rate'])(output)
-        output = Dense(self.n_classes, activation=None, kernel_regularizer=l2(self.opt['regul_coef_dense']))(output)
+        output = Dense(self.n_classes, activation=None,
+                       kernel_regularizer=l2(self.opt['regul_coef_dense']))(output)
         output = BatchNormalization()(output)
         act_output = Activation('sigmoid')(output)
         model = Model(inputs=inp, outputs=act_output)
         return model
-

@@ -19,6 +19,9 @@ import os
 import urllib
 import pickle
 import json
+import os
+
+os.environ['DATASETS_URL'] = 'http://share.ipavlov.mipt.ru:8080/repository/datasets/'
 
 def build(opt):
     dpath = os.path.join(opt['datapath'], 'dstc2')
@@ -31,6 +34,7 @@ def build(opt):
             build_data.remove_dir(dpath)
         build_data.make_dir(dpath)
         ds_path = os.environ.get('DATASETS_URL')
+        print('URL:', ds_path)
         filename = 'dstc2.tar.gz'
 
         # Download the data.
@@ -59,11 +63,42 @@ def build(opt):
                 if replica['dialog-acts']:
                     for act in replica['dialog-acts']:
                         for slot in act['slots']:
-                            all_intents.append(act['act'] + '_' + slot[1])
+                            if slot[0] == 'slot':
+                                all_intents.append(act['act'] + '_' + slot[1])
+                            else:
+                                all_intents.append(act['act'] + '_' + slot[0])
+                        if len(act['slots']) == 0:
+                            all_intents.append(act['act'])
+
+        with open(os.path.join(dpath, 'dstc2-val.jsonlist')) as read:
+            for line in read:
+                line = line.strip()
+                # if empty line - it is the end of dialog
+                if not line:
+                    continue
+
+                replica = json.loads(line)
+                if 'goals' not in replica.keys():
+                    # bot reply
+                    continue
+                if replica['dialog-acts']:
+                    for act in replica['dialog-acts']:
+                        for slot in act['slots']:
+                            if slot[0] == 'slot':
+                                all_intents.append(act['act'] + '_' + slot[1])
+                            else:
+                                all_intents.append(act['act'] + '_' + slot[0])
+                        if len(act['slots']) == 0:
+                            all_intents.append(act['act'])
 
         intents = set(all_intents)
         with open(os.path.join(dpath, "intents.txt"), "wb") as fp:  # Pickling
             pickle.dump(intents, fp)
+
+        # {'inform_this', 'request_addr', 'confirm_area', 'inform_food',
+        # 'deny_food', 'inform_name', 'inform_pricerange', 'request_area',
+        # 'deny_name', 'request_pricerange', 'request_food', 'confirm_food',
+        # 'confirm_pricerange', 'request_phone', 'request_postcode', 'inform_area'}
 
         # Mark the data as built.
         build_data.mark_done(dpath, version_string=version)
