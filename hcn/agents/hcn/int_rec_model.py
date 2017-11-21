@@ -68,6 +68,7 @@ class IntentRecognitionModel(object):
         self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
                                                           'dstc2', 'intents.txt'), 'rb')))
         self.intents.append('unknown')
+        self.intents = np.array(self.intents)
         self.n_classes = len(self.intents)
         self.confident_threshold = opt['intent_threshold']
 
@@ -137,14 +138,27 @@ class IntentRecognitionModel(object):
         return inputs
 
     def _predictions2text(self, predictions):
-        # predictions: n_samples x n_classes
-        y = [self.intents[np.where(sample > self.confident_threshold)[0]] for sample in predictions]
+        # predictions: n_samples x n_classes, float values of probabilities
+        # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
+        #      for sample in predictions]
+        y = []
+        for sample in predictions:
+            y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
         return y
 
     def _text2predictions(self, predictions):
+        # predictions: list of lists with text intents in the reply
         eye = np.eye(self.n_classes)
-        print(predictions)
-        y = [np.sum([eye[class_id] for class_id in sample], axis=0) for sample in predictions]
+        y = []
+        for sample in predictions:
+            curr = np.zeros(self.n_classes)
+            if type(sample) is list:
+                for intent in sample:
+                    curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+                y.append(curr)
+            else:
+                y.append(eye[np.where(self.intents == sample)[0]].reshape(-1))
+        y = np.asarray(y)
         return y
 
     def _batchify(self, batch):
@@ -154,7 +168,7 @@ class IntentRecognitionModel(object):
         self.embedding_dict.add_items(question)
         embedding_batch = self.create_batch(question)
 
-        if len(batch[0]) > 1:
+        if len(batch[0]) == 2:
             # train mode
             y = self._text2predictions([ex['labels'][0] for ex in batch])
             return embedding_batch, y
@@ -213,7 +227,6 @@ class IntentRecognitionModel(object):
             outputs.append(output_i)
 
         output = concatenate(outputs, axis=1)
-        print('Concatenate shape:', output.shape)
 
         output = Dropout(rate=self.opt['dropout_rate'])(output)
         output = Dense(self.opt['dense_dim'], activation=None,

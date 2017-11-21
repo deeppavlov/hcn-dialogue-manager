@@ -25,6 +25,7 @@ import json
 import pickle
 import os
 import numpy as np
+from .metrics_f_auc import accuracy_score, roc_auc_score
 
 
 class IntentRecognitionTeacher(Teacher):
@@ -36,6 +37,7 @@ class IntentRecognitionTeacher(Teacher):
         self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
                                                      'dstc2', 'intents.txt'), 'rb')))
         self.intents.append('unknown')
+        self.intents = np.array(self.intents)
         self.n_classes = len(self.intents)
         self.confident_threshold = opt['intent_threshold']
 
@@ -68,22 +70,48 @@ class IntentRecognitionTeacher(Teacher):
         self.step_size = opt.get('batchsize', 1)
         self.data_offset = opt.get('batchindex', 0)
 
+        self.observations = []
+        self.labels = []
+
         self.reset()
+        if shared:
+            self.observations = shared['observations']
+            self.labels = shared['labels']
+        else:
+            self.observations = []
+            self.labels = []
 
     def _predictions2text(self, predictions):
-        # predictions: n_samples x n_classes
-        y = [self.intents[np.where(sample > self.confident_threshold)[0]] for sample in predictions]
+        # predictions: n_samples x n_classes, float values of probabilities
+        # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
+        #      for sample in predictions]
+        y = []
+        for sample in predictions:
+            y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
         return y
 
     def _text2predictions(self, predictions):
+        # predictions: list of lists with text intents in the reply
         eye = np.eye(self.n_classes)
-        y = [np.sum([eye[class_id] for class_id in sample], axis=0) for sample in predictions]
+        y = []
+        for sample in predictions:
+            curr = np.zeros(self.n_classes)
+            if type(sample) is list:
+                for intent in sample:
+                    curr += eye[np.where(np.array(self.intents) == intent)[0]].reshape(-1)
+                y.append(curr)
+            else:
+                y.append(eye[np.where(np.array(self.intents) == sample)[0]].reshape(-1))
+        y = np.asarray(y)
         return y
 
     def reset(self):
         # Reset the dialog so that it is at the start of the epoch,
         # and all metrics are reset.
         self.metrics.clear()
+        del self.observations[:]
+        del self.labels[:]
+
         self.lastY = None
         self.episode_idx = self.data_offset - self.step_size
         self.episode_done = True
@@ -109,12 +137,17 @@ class IntentRecognitionTeacher(Teacher):
         shared = super().share()
         shared['data'] = self.data.share()
         shared['cands'] = self.cands
+        shared['observations'] = self.observations
+        shared['labels'] = self.labels
         return shared
 
     def observe(self, observation):
         """Process observation for metrics. """
         if self.lastY is not None:
-            self.metrics.update(observation, self.lastY)
+            #self.metrics.update(observation, self.lastY)
+            if 'text' in observation.keys():
+                self.labels.append(self._text2predictions(self.lastY))
+                self.observations += [observation['score']]
             self.lastY = None
         return observation
 
@@ -151,7 +184,6 @@ class IntentRecognitionTeacher(Teacher):
         action, self.epochDone = self.next_example()
         self.episode_done = action['episode_done']
         action['id'] = self.getID()
-        print('ACTION: ', action)
 
         self.lastY = action.get('labels', None)
         if not self.datatype.startswith('train'):
@@ -160,7 +192,17 @@ class IntentRecognitionTeacher(Teacher):
 
     # Return transformed metrics showing total examples and accuracy if avail.
     def report(self):
-        return self.metrics.report()
+        acc = accuracy_score(self.labels,
+                             self._text2predictions(self._predictions2text(self.observations)))
+        try:
+            auc = roc_auc_score(self.labels, self.observations)
+        except ValueError:
+            auc = 0
+        report = dict()
+        report['texts'] = len(self.observations)
+        report['accuracy'] = acc
+        report['auc'] = auc
+        return report #self.metrics.report()
 
     def label_candidates(self):
         return self.cands
@@ -260,7 +302,8 @@ class DialogData(object):
             self.image_loader = ImageLoader(opt)
             self.data = []
             self._load(data_loader, opt['datafile'])
-            self.cands = None if cands == None else set(sys.intern(c) for c in cands)
+            #self.cands = None if cands == None else set(sys.intern(c) for c in cands)
+            self.cands = cands
         self.addedCands = []
         self.copied_cands = False
 

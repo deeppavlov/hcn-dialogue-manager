@@ -20,6 +20,7 @@ import sqlite3
 class DatabaseSimulator(object):
 
     def __init__(self, fname):
+        print("database path",fname)
         self.conn = sqlite3.connect(fname)
         self.cursor = self.conn.cursor()
         self.fields = []

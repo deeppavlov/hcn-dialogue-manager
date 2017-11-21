@@ -40,6 +40,13 @@ def roc_auc_score(y_true, y_pred):
         Area Under the Curve (AUC) from prediction scores
     """
     try:
-        return sklearn.metrics.roc_auc_score(y_true.reshape(-1), y_pred.reshape(-1))
+        return sklearn.metrics.roc_auc_score(y_true, y_pred)
+    except ValueError:
+        return 0.
+
+def accuracy_score(y_true, y_pred):
+
+    try:
+        return sklearn.metrics.accuracy_score(y_true, y_pred)
     except ValueError:
         return 0.
