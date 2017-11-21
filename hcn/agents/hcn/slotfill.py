@@ -2,8 +2,8 @@ import json
 import os
 import pkg_resources
 from fuzzywuzzy import process
-from utils.ner_src.corpus import Corpus
-from utils.ner_src.network import NER
+from .ner_src.corpus import Corpus
+from .ner_src.network import NER
 
 
 def get_modelfile(fname):
