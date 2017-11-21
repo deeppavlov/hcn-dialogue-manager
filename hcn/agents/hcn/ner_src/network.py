@@ -3,11 +3,11 @@ from collections import defaultdict
 
 import numpy as np
 import tensorflow as tf
-from src.layers import character_embedding_network
-from src.layers import embedding_layer
-from src.layers import highway_convolutional_network
-from src.layers import stacked_convolutions
-from src.layers import stacked_rnn
+from utils.ner_src.layers import character_embedding_network
+from utils.ner_src.layers import embedding_layer
+from utils.ner_src.layers import highway_convolutional_network
+from utils.ner_src.layers import stacked_convolutions
+from utils.ner_src.layers import stacked_rnn
 from tensorflow.contrib.layers import xavier_initializer
 
 

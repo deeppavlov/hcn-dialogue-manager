@@ -1,18 +1,22 @@
 import json
-
+import os
+import pkg_resources
 from fuzzywuzzy import process
-from src.corpus import Corpus
-from src.network import NER
+from utils.ner_src.corpus import Corpus
+from utils.ner_src.network import NER
 
 
+def get_modelfile(fname):
+    rel_path = os.path.join('model', fname)
+    return pkg_resources.resource_filename(__name__, rel_path)
 
 
 class Nerpa:
     def __init__(self,
-                 dict_filepath='model/dict.txt',
-                 model_filepath='model/ner_model.ckpt',
-                 params_filepath='model/params.json',
-                 slot_vals_filepath='model/slot_vals.json'):
+                 dict_filepath=get_modelfile('dict.txt'),
+                 model_filepath=get_modelfile('ner_model.ckpt'),
+                 params_filepath=get_modelfile('params.json'),
+                 slot_vals_filepath=get_modelfile('slot_vals.json')):
         # Build and initialize the model
         with open(params_filepath) as f:
             network_params = json.load(f)
