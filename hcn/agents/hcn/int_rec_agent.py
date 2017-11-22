@@ -23,11 +23,6 @@ set_session(tf.Session(config=config))
 from parlai.core.agents import Agent
 
 import numpy as np
-import sklearn.model_selection
-from keras.optimizers import Adam, SGD
-from keras.callbacks import EarlyStopping
-
-from sklearn.metrics import precision_recall_fscore_support, f1_score
 
 from .embeddings_dict import EmbeddingsDict
 from .int_rec_model import IntentRecognitionModel
@@ -65,7 +60,7 @@ class IntentRecognizerAgent(Agent):
         self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
                                                           'dstc2', 'intents.txt'), 'rb')))
         self.intents.append('unknown')
-        self.intents = np.array(self.intents)
+        self.intents = np.array(list(self.intents))
         self.n_classes = len(self.intents)
         self.confident_threshold = opt['intent_threshold']
 
@@ -82,6 +77,7 @@ class IntentRecognizerAgent(Agent):
         y = []
         for sample in predictions:
             y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+        y = np.asarray(y)
         return y
 
     def _text2predictions(self, predictions):
@@ -90,12 +86,15 @@ class IntentRecognizerAgent(Agent):
         y = []
         for sample in predictions:
             curr = np.zeros(self.n_classes)
-            if type(sample) is list:
-                for intent in sample:
-                    curr += eye[np.where(np.array(self.intents) == intent)[0]].reshape(-1)
-                y.append(curr)
-            else:
-                y.append(eye[np.where(np.array(self.intents) == sample)[0]].reshape(-1))
+            # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
+            #         and len(sample) > 1:
+            #     for intent in sample:
+            #         curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            # else:
+            #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
+            for intent in sample:
+                curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            y.append(curr)
         y = np.asarray(y)
         return y
 
@@ -149,7 +148,9 @@ class IntentRecognizerAgent(Agent):
             self.n_examples += len(examples)
             batch = self.model._batchify(examples)
             predictions = self.model.update(batch)
+            #print(predictions)
             predictions_text = self._predictions2text(predictions)
+            #print(predictions_text)
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
@@ -169,8 +170,11 @@ class IntentRecognizerAgent(Agent):
         report['updates'] = self.model.updates
         report['n_examples'] = self.n_examples
         report['loss'] = self.model.train_loss
-        report['accuracy'] = self.model.train_acc
-        report['auc'] = self.model.train_auc
+        report['categ_accuracy'] = self.model.train_acc
+        report['auc_macro'] = self.model.train_auc_m
+        report['auc_weighted'] = self.model.train_auc_w
+        report['f1_macro'] = self.model.train_f1_m
+        report['f1_weighted'] = self.model.train_f1_w
         return report
 
     def save(self):

@@ -15,7 +15,7 @@ limitations under the License.
 """
 
 from parlai.core.agents import MultiTaskTeacher
-from .build import build
+from .int_rec_build import build
 from .int_rec_teacher import IntentRecognitionTeacher
 
 import copy

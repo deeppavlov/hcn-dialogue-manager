@@ -25,8 +25,8 @@ import json
 import pickle
 import os
 import numpy as np
-from .metrics_f_auc import accuracy_score, roc_auc_score
-
+from .int_rec_metrics import roc_auc_score, SeveralMetrics, precision_recall_fscore_support
+from .int_rec_build import data_preprocessing
 
 class IntentRecognitionTeacher(Teacher):
 
@@ -37,16 +37,14 @@ class IntentRecognitionTeacher(Teacher):
         self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
                                                      'dstc2', 'intents.txt'), 'rb')))
         self.intents.append('unknown')
-        self.intents = np.array(self.intents)
+        self.intents = np.array(list(self.intents))
         self.n_classes = len(self.intents)
         self.confident_threshold = opt['intent_threshold']
-
-        print("Considered intents:", self.intents)
 
         if shared and 'cands' in shared:
             self.cands = shared['cands']
         else:
-            self.cands = self.intents
+            self.cands = list(self.intents)
 
         super().__init__(opt, shared)
 
@@ -81,6 +79,11 @@ class IntentRecognitionTeacher(Teacher):
             self.observations = []
             self.labels = []
 
+        if shared and shared.get('metrics'):
+            self.metrics = shared['metrics']
+        else:
+            self.metrics = SeveralMetrics(opt, self.n_classes)
+
     def _predictions2text(self, predictions):
         # predictions: n_samples x n_classes, float values of probabilities
         # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
@@ -88,6 +91,7 @@ class IntentRecognitionTeacher(Teacher):
         y = []
         for sample in predictions:
             y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+        y = np.asarray(y)
         return y
 
     def _text2predictions(self, predictions):
@@ -96,12 +100,15 @@ class IntentRecognitionTeacher(Teacher):
         y = []
         for sample in predictions:
             curr = np.zeros(self.n_classes)
-            if type(sample) is list:
-                for intent in sample:
-                    curr += eye[np.where(np.array(self.intents) == intent)[0]].reshape(-1)
-                y.append(curr)
-            else:
-                y.append(eye[np.where(np.array(self.intents) == sample)[0]].reshape(-1))
+            # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
+            #         and len(sample) > 1:
+            #     for intent in sample:
+            #         curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            # else:
+            #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
+            for intent in sample:
+                curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            y.append(curr)
         y = np.asarray(y)
         return y
 
@@ -144,9 +151,9 @@ class IntentRecognitionTeacher(Teacher):
     def observe(self, observation):
         """Process observation for metrics. """
         if self.lastY is not None:
-            #self.metrics.update(observation, self.lastY)
+            self.metrics.update(observation, self.lastY)
             if 'text' in observation.keys():
-                self.labels.append(self._text2predictions(self.lastY))
+                self.labels.append(self._text2predictions([self.lastY])[0])
                 self.observations += [observation['score']]
             self.lastY = None
         return observation
@@ -190,19 +197,18 @@ class IntentRecognitionTeacher(Teacher):
             action.pop('labels', None)
         return action
 
-    # Return transformed metrics showing total examples and accuracy if avail.
+
     def report(self):
-        acc = accuracy_score(self.labels,
-                             self._text2predictions(self._predictions2text(self.observations)))
-        try:
-            auc = roc_auc_score(self.labels, self.observations)
-        except ValueError:
-            auc = 0
-        report = dict()
-        report['texts'] = len(self.observations)
-        report['accuracy'] = acc
-        report['auc'] = auc
-        return report #self.metrics.report()
+        auc_m = roc_auc_score(self.labels, self.observations, average='macro')
+        f1_m = precision_recall_fscore_support(self.labels, self.observations,  average='macro')
+        auc_w = roc_auc_score(self.labels, self.observations, average='weighted')
+        f1_w = precision_recall_fscore_support(self.labels, self.observations,  average='weighted')
+        report = self.metrics.report().copy()
+        report['auc_macro'] = auc_m
+        report['f1_macro'] = f1_m
+        report['auc_weighted'] = auc_w
+        report['f1_weighted'] = f1_w
+        return report
 
     def label_candidates(self):
         return self.cands
@@ -227,7 +233,7 @@ class IntentRecognitionTeacher(Teacher):
         ::
         """
 
-        print("[loading dstc2-dialog data:" + path + "]")
+        print("[ loading dstc2-dialog data:" + path + "]")
         with open(path) as read:
             start = True
             x = ''
@@ -253,7 +259,7 @@ class IntentRecognitionTeacher(Teacher):
                                 intents.append(act['act'])
                     else:
                         continue
-                    x = replica['text']
+                    x = data_preprocessing([replica['text']])[0]
                     y = intents
                     yield (x, y, None, None, None), True
                 else:
@@ -302,10 +308,7 @@ class DialogData(object):
             self.image_loader = ImageLoader(opt)
             self.data = []
             self._load(data_loader, opt['datafile'])
-            #self.cands = None if cands == None else set(sys.intern(c) for c in cands)
             self.cands = cands
-        self.addedCands = []
-        self.copied_cands = False
 
     def share(self):
         shared = {
@@ -427,23 +430,14 @@ class DialogData(object):
 
         if (table.get('labels', None) is not None
                 and self.cands is not None):
-            if self.addedCands:
-                # remove elements in addedCands
-                self.cands.difference_update(self.addedCands)
-                self.addedCands.clear()
-            for label in table['labels']:
-                if label not in self.cands:
-                    # add labels, queue them for removal next time
-                    if not self.copied_cands:
-                        self.cands = self.cands.copy()
-                        self.copied_cands = True
-                    self.cands.add(label)
-                    self.addedCands.append(label)
+
             table['label_candidates'] = self.cands
 
         if 'labels' in table and 'label_candidates' in table:
             if table['labels'][0] not in table['label_candidates']:
-                raise RuntimeError('true label missing from candidate labels')
+                # --- IF YOU WANNA ADD NEW LABELS CHANGE THIS ---
+                table['labels'] = ['unknown']
+                #raise RuntimeError('true label missing from candidate labels')
         return table
 
 

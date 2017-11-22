@@ -1,4 +1,3 @@
-from keras import backend as K
 import sklearn.metrics
 import numpy as np
 
@@ -29,10 +28,10 @@ def fbeta_score(y_true, y_pred, beta=1):
     fbeta_score = (1 + bb) * (p * r) / (bb * p + r + EPS)
     return fbeta_score
 
-def fmeasure(y_true, y_pred):
+def fmeasure(y_true, y_pred, average=None):
     return fbeta_score(y_true, y_pred, beta=1)
 
-def roc_auc_score(y_true, y_pred):
+def roc_auc_score(y_true, y_pred, average='macro'):
     """Compute Area Under the Curve (AUC) from prediction scores.
 
     Args:
@@ -43,6 +42,13 @@ def roc_auc_score(y_true, y_pred):
         Area Under the Curve (AUC) from prediction scores
     """
     try:
-        return sklearn.metrics.roc_auc_score(y_true.reshape(-1), y_pred.reshape(-1))
+        return sklearn.metrics.roc_auc_score(y_true, y_pred, average=average)
+    except ValueError:
+        return 0.
+
+def precision_recall_fscore_support(y_true, y_pred, average='macro'):
+
+    try:
+        return sklearn.metrics.precision_recall_fscore_support(y_true, y_pred, average=average)
     except ValueError:
         return 0.

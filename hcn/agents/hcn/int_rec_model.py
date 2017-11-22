@@ -45,7 +45,7 @@ import json
 import pickle
 
 from .embeddings_dict import EmbeddingsDict
-from .metrics_f_auc import fmeasure, roc_auc_score
+from .int_rec_metrics import precision_recall_fscore_support, roc_auc_score
 
 SEED = 23
 np.random.seed(SEED)
@@ -68,7 +68,7 @@ class IntentRecognitionModel(object):
         self.intents = list(pickle.load(open(os.path.join(opt['datapath'],
                                                           'dstc2', 'intents.txt'), 'rb')))
         self.intents.append('unknown')
-        self.intents = np.array(self.intents)
+        self.intents = np.array(list(self.intents))
         self.n_classes = len(self.intents)
         self.confident_threshold = opt['intent_threshold']
 
@@ -90,11 +90,12 @@ class IntentRecognitionModel(object):
         self.updates = 0
         self.train_loss = 0.0
         self.train_acc = 0.0
-        self.train_auc = 0.0
-        self.val_loss = 0.0
-        self.val_acc = 0.0
-        self.val_auc = 0.0
+        self.train_auc_m = 0.
+        self.train_auc_w = 0.
+        self.train_f1_m = 0.
+        self.train_f1_w = 0.
 
+        print("[ Considered intents:", self.intents, "]")
         print("[ Model initialized ]")
 
     def _init_from_scratch(self):
@@ -144,20 +145,25 @@ class IntentRecognitionModel(object):
         y = []
         for sample in predictions:
             y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+        y = np.asarray(y)
         return y
 
     def _text2predictions(self, predictions):
         # predictions: list of lists with text intents in the reply
-        eye = np.eye(self.n_classes)
+        eye = np.eye(self.n_classes, dtype='int')
         y = []
         for sample in predictions:
-            curr = np.zeros(self.n_classes)
-            if type(sample) is list:
-                for intent in sample:
-                    curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
-                y.append(curr)
-            else:
-                y.append(eye[np.where(self.intents == sample)[0]].reshape(-1))
+            curr = np.zeros(self.n_classes, dtype='int')
+            # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
+            #         and len(sample) > 1:
+            #     for intent in sample:
+            #         curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            # else:
+            #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
+            for intent in sample:
+                #print(sample)
+                curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
+            y.append(curr)
         y = np.asarray(y)
         return y
 
@@ -169,8 +175,7 @@ class IntentRecognitionModel(object):
         embedding_batch = self.create_batch(question)
 
         if len(batch[0]) == 2:
-            # train mode
-            y = self._text2predictions([ex['labels'][0] for ex in batch])
+            y = self._text2predictions([ex['labels'] for ex in batch])
             return embedding_batch, y
         else:
             return embedding_batch
@@ -197,11 +202,14 @@ class IntentRecognitionModel(object):
     def update(self, batch):
         x, y = batch
         y = np.array(y)
-
         self.train_loss, self.train_acc = self.model.train_on_batch(x, y)
         y_pred = self.model.predict_on_batch(x).reshape(-1, self.n_classes)
-        self.train_auc = roc_auc_score(y, y_pred)
-        self.f1 = fmeasure(y, y_pred)
+
+        self.train_auc_m = roc_auc_score(y, y_pred, average='macro')
+        self.train_auc_w = roc_auc_score(y, y_pred, average='weighted')
+        y_pred_ = self._text2predictions(self._predictions2text(y_pred))
+        self.train_f1_m = precision_recall_fscore_support(y, y_pred_, average='macro')
+        self.train_f1_w = precision_recall_fscore_support(y, y_pred_, average='weighted')
         self.updates += 1
         return y_pred
 
