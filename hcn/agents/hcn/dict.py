@@ -1,7 +1,7 @@
 """
 Copyright 2017 Neural Networks and Deep Learning lab, MIPT
 
-Licensed under the Apache License, Version 2.0 (the "License");
+Licensed inder the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
@@ -36,7 +36,7 @@ class SpacyDictionaryAgent(DictionaryAgent):
     def add_cmdline_args(argparser):
         DictionaryAgent.add_cmdline_args(argparser)
         argparser.add_argument(
-            '--tracker', required=True, choices=['babi5', 'babi6', 'dstc2'],
+            '--tracker', required=False, choices=['babi5', 'babi6'],
             help='Type of entity tracker to use. Implemented only '
                  'for dialog_babi5 and dialog_babi6.')
         return argparser
@@ -44,6 +44,7 @@ class SpacyDictionaryAgent(DictionaryAgent):
     def __init__(self, opt, shared):
         super().__init__(self.opt, shared)
         self.word_tok = None
+        print(self.opt)
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""
@@ -186,14 +187,13 @@ class ActionDictionaryAgent(SpacyDictionaryAgent):
             self.tracker = entities.Babi5EntityTracker
         elif self.opt['tracker'] == 'babi6':
             self.tracker = entities.Babi6EntityTracker
-        elif self.opt['tracker'] == 'dstc2':
-            self.tracker = entities.DSTC2EntityTracker
 
         # properties
         self.label_candidates = False
 
     def get_template(self, tokens):
-        tokens = self.tracker.extract_entity_types(tokens)
+        if self.tracker:
+            tokens = self.tracker.extract_entity_types(tokens)
         return self.detokenize(tokens)
 
     def act(self):

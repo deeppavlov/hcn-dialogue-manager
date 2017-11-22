@@ -14,6 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import os
+import json
+
 from parlai.core.dict import DictionaryAgent, Agent
 
 from .utils import normalize_text
@@ -36,10 +39,21 @@ class HCNPreprocessAgent(Agent):
         # intialize action dictionary
         self.actions = ActionDictionaryAgent(opt, shared)
 
-        # initialize word dictionary
+        # word dictionary
         self.words = WordDictionaryAgent(opt, shared)
 
+        # track all slot names
+        self.slot_names = []
+        if opt.get('dict_file')\
+           and os.path.isfile(opt['dict_file'] + '.slots'):
+            self.slot_names = json.load(open(opt['dict_file'] + '.slots', 'r'))
+        elif opt.get('model_file') \
+            and os.path.isfile(opt['model_file'] + '.dict.slots'):
+            self.slot_names = json.load(open(opt['model_file'] + '.dict.slots', 'r'))
+
+
     def act(self):
+#TODO: update documentation
         """
             - Add words passed in the 'text' field of the observation to
         the dictionary,
@@ -53,6 +67,12 @@ class HCNPreprocessAgent(Agent):
         self.actions.observe(self.observation)
         self.actions.act()
 
+        # is `intents` in observation, save slot names
+        for intent in self.observation.get('intents', []):
+            for slot, value in intent.get('slots', []):
+                if slot not in self.slot_names:
+                    self.slot_names.append(slot)
+
         return {'id': self.getID()}
 
     def save(self, filename=None, append=False, sort=True):
@@ -60,6 +80,7 @@ class HCNPreprocessAgent(Agent):
         if filename:
             self.words.save(filename + '.words', sort=sort)
             self.actions.save(filename + '.actions', sort=sort)
+            json.dump(self.slot_names, open(filename + '.slots', 'w'))
         else:
             self.words.save(sort=sort)
             self.actions.save(sort=sort)
