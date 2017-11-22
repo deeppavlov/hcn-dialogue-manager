@@ -1,9 +1,12 @@
 #!/usr/bin/env bash
 
 # display data example
-python3 ./utils/display_data.py -t dialog_babi:task:6 -n 10
+python3 ./utils/display_data.py -t dialog_babi:task:6\
+                                -n 10
 DATASETS_URL=http://share.ipavlov.mipt.ru:8080/repository/datasets/\
-    python3 ./utils/display_data.py  -t hcn.tasks.dstc2.agents --datatype train:ordered -n 10
+    python3 ./utils/display_data.py  -t hcn.tasks.dstc2.agents\
+                                     -dt train:ordered\
+                                     -n 10
 
 # build directory
 mkdir -p ./build
@@ -12,23 +15,20 @@ mkdir -p ./build
 python3 ./utils/train_model.py -t hcn.tasks.dstc2.agents\
                                -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
                                -mf ./build/hcn\
-                               --datatype train:ordered\
+                               -dt train:ordered\
+                               --template-file ./data/dstc2-templates.txt\
                                --num-epochs -1\
                                --log-every-n-secs -1\
                                --log-every-n-epochs 1\
                                --learning-rate .005\
                                --hidden-dim 128\
                                --validation-every-n-epochs 1\
-                               -dbf true\
                                --chosen-metric accuracy\
-                               --tracker babi6\
-                               --action-mask true\
+                               -dbf true\
                                -vp 10
 
 # interactive evaluate
 python3 ./utils/interactive.py -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
                                --pretrained-model ./build/hcn\
                                --dict-file ./build/hcn.dict\
-                               --tracker babi6\
-                               --action-mask true
-
+                               --template-file ./data/dstc2-templates.txt
