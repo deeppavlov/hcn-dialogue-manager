@@ -130,10 +130,13 @@ class DSTC2Teacher(Teacher):
             return {'episode_done': True}
         action, self.epochDone = self.next_example()
         self.episode_done = action['episode_done']
-        action['id'] = self.getID()
         self.lastY = action.get('labels', None)
         if not self.datatype.startswith('train'):
-            action.pop('labels', None)
+            for key in list(action.keys()):
+                if key not in ['text', 'label_candidates', 'episode_done',
+                               'db_result']:
+                    action.pop(key, None)
+        action['id'] = self.getID()
         return action
 
     # Return transformed metrics showing total examples and accuracy if avail.
@@ -165,7 +168,7 @@ class DSTC2Teacher(Teacher):
                         reply = json.loads(line)
                         is_reply = 'goals' not in reply
                         if is_reply:
-                            cands.append(reply['dialog_acts'][0]['act'])
+                            cands.append(reply['text'])
                     else:
                         cands.append(line.strip())
         return cands
@@ -194,6 +197,9 @@ class DSTC2Teacher(Teacher):
         with open(path) as read:
             start = True
             x = ''
+            repl_index = -1
+            intents = []
+            db_result = None
             for line in read:
                 line = line.strip()
                 # if empty line - it is the end of dialog
@@ -206,15 +212,23 @@ class DSTC2Teacher(Teacher):
                 if not is_reply:
                     x = replica['text'] or '<SILENCE>'
                     repl_index = replica['index']
+                    intents = replica['dialog_acts']
+                    db_result = replica.get('db_result')
                 elif x and repl_index == replica['index']:
                     y = replica['text'] or '<SILENCE>'
-                    other = json.dumps(replica['dialog-acts'][0])
+                    other = json.dumps({
+                        'intents': intents,
+                        'act': replica['dialog_acts'][0]['act'],
+                        'db_result': db_result
+                    })
                     if start:
                         yield (x, (y,), None, None, other), True
                         start = False
                     else:
                         yield (x, (y,), None, None, other), False
                     x = ''
+                    intents = []
+                    db_result = None
 
 
 class DialogData(object):
