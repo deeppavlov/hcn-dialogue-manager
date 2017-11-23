@@ -17,10 +17,11 @@ python3 ./utils/train_model.py -t hcn.tasks.dstc2.agents\
                                -mf ./build/hcn\
                                -dt train:ordered\
                                --template-file ./data/dstc2-templates.txt\
+                               --embedding-file ./data/glove.42B.300d.txt\
                                --num-epochs -1\
                                --log-every-n-secs -1\
                                --log-every-n-epochs 1\
-                               --learning-rate .005\
+                               --learning-rate .05\
                                --hidden-dim 128\
                                --validation-every-n-epochs 1\
                                --chosen-metric accuracy\

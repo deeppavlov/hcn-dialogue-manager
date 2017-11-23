@@ -23,7 +23,8 @@ from parlai.core.agents import Agent
 from . import config
 from . import tracker
 from . import templates as tmpl
-from .ner import slotfill as slotfill
+from . import slotfill
+from .emb_dict import EmbeddingsDict
 from .model import HybridCodeNetworkModel
 from .preprocess import HCNPreprocessAgent
 from .utils import is_silence, is_null_api_answer, is_api_answer
@@ -40,9 +41,6 @@ class HybridCodeNetworkAgent(Agent):
                                help='Print debug output.')
         argparser.add_argument('--debug-wrong', type='bool', default=False,
                                help='Print debug output.')
-        argparser.add_argument('--template-file', type=str, default=None,
-                               required=False,
-                               help='File with dataset templates if present.')
         return argparser
 
     @staticmethod
@@ -75,23 +73,24 @@ class HybridCodeNetworkAgent(Agent):
         #    self.ent_tracker = entities.Babi5EntityTracker()
         #elif self.opt['tracker'] == 'babi6':
         #    self.ent_tracker = entities.Babi6EntityTracker()
-        #elif self.opt['tracker'] == 'dstc2':
-        #    self.ent_tracker = entities.DSTC2EntityTracker()
 
         # load templates if present
         self.templates = None
-        print("\n\nHERE\n\n")
-        if self.opt.get("template_file"):
+        if self.opt.get("template_file") is not None:
             self.templates = tmpl.Templates().load(self.opt['template_file'])
             print("[using {} provided templates from `{}`]"\
                   .format(len(self.templates), self.opt['template_file']))
 
-        # initialize word dictionary and action templates
+        # initialize word dictionary, action templates and embeddings
         self.preps = HybridCodeNetworkAgent.dictionary_class()(opt)
+
+        # initialize embeddings
+        self.embeddings = None
+        if self.opt.get("embedding_file") is not None:
+            self.embeddings = EmbeddingsDict(opt)
 
         # initialize tracker
         self.tracker = tracker.DefaultTracker(self.preps.slot_names)
-        print("Detected slot names: ", self.preps.slot_names)
 
         # initialize slot filler
         self.slot_filler = slotfill.Nerpa()
@@ -99,10 +98,13 @@ class HybridCodeNetworkAgent(Agent):
         # intialize parameters
         self.is_shared = False
         self.db_result = None
-        if self.templates:
+        self.n_actions = len(self.preps.actions)
+        if self.templates is not None:
             self.n_actions = len(self.templates)
-        else:
-            self.n_actions = len(self.preps.actions)
+        self.emb_size = 0
+        if self.embeddings is not None:
+            self.emb_size = self.embeddings.dim
+        print("Embedding size =", self.emb_size)
         self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
 
         # initialize metrics
@@ -110,8 +112,9 @@ class HybridCodeNetworkAgent(Agent):
 
         opt['action_size'] = self.n_actions
 # TODO: enrich features
-        opt['obs_size'] = 5 + len(self.preps.words) +\
+        opt['obs_size'] = 4 + len(self.preps.words) + self.emb_size +\
                 2 * self.tracker.state_size + self.n_actions
+        print("Observation size =", opt['obs_size'])
 
         self.model = HybridCodeNetworkModel(opt)
 
@@ -188,6 +191,10 @@ class HybridCodeNetworkAgent(Agent):
         bow_features = np.zeros(len(self.preps.words), dtype=np.float32)
         for t in tokens:
             bow_features[self.preps.words[t]] = 1.
+
+        # Embeddings
+        emb_features = self.embeddings.encode(tokens)
+
         # Text entity features
         prev_slots = self.tracker.get_slots()
 # TODO: more abstract ner interface
@@ -209,7 +216,7 @@ class HybridCodeNetworkAgent(Agent):
                 bow_features.shape, ent_features.shape))
         # Other features
         context_features = np.array([
-            is_silence(ex['text']),
+            #is_silence(ex['text']),
             sum(binary_features),
             sum(diff_features),
             #bool(self.preps.database.search(self.ent_tracker.entities))*1.,
@@ -228,12 +235,10 @@ class HybridCodeNetworkAgent(Agent):
             print("Tracker features = ", ent_features)
             print("Current db result =", self.db_result)
             print("Context features = ", context_features)
-        #context_features = np.array([], dtype=np.float32)
         features = np.hstack((
-            bow_features, ent_features, context_features, self.prev_action
-            ))[np.newaxis, :]
-        if self.opt['debug']:
-            print("Feats shape = ", features.shape)
+            bow_features, emb_features, ent_features, context_features,
+            self.prev_action
+        ))[np.newaxis, :]
 
         # constructing mask of allowed actions
         action_mask = np.ones(self.n_actions, dtype=np.float32)

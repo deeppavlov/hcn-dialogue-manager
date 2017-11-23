@@ -21,7 +21,7 @@ import re
 from parlai.core.dict import DictionaryAgent
 
 from . import entities
-from .utils import filter_service_words, babi6_dirty_fix
+from .utils import filter_service_words, babi6_dirty_fix, normalize_text
 
 
 NLP = spacy.load('en')
@@ -83,12 +83,9 @@ class WordDictionaryAgent(SpacyDictionaryAgent):
         SpacyDictionaryAgent.add_cmdline_args(argparser)
         dictionary = argparser.add_argument_group('Word Dictionary Arguments')
         dictionary.add_argument(
-            '--pretrained-words', type='bool', default=True,
+            '--pretrained-words', type='bool', default=False,
             help='User only words found in provided embedding_file'
             )
-        dictionary.add_argument(
-            '--embedding-file', type=str, default=None,
-            help='File of space separated embeddings: w e1 .. ed')
         return dictionary
 
     def __init__(self, opt, shared=None):

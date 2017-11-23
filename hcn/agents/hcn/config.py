@@ -31,6 +31,14 @@ def add_cmdline_args(parser):
 #                   help='Type of entity tracker to use. Implemented only '
 #                   'for dialog_babi5 and dialog_babi6.')
 
+    # Dictionaries configuration
+    agent.add_argument('--fasttext-model', type=str, default=None,
+                        help='Fasttext pretrained model')
+    agent.add_argument('--embedding-file', type=str, default=None,
+                        help='List of used word embeddings: w e1 .. ed.')
+    agent.add_argument('--template-file', type=str, default=None,
+                       help='File with dataset templates if present.')
+
     # Model specification
     agent.add_argument('--learning-rate', type=float, default=.1)
     agent.add_argument('--epoch-num', type=int, default=1)
