@@ -7,7 +7,7 @@ from .ner_src.network import NER
 
 
 def get_modelfile(fname):
-    rel_path = os.path.join('model', fname)
+    rel_path = os.path.join('ner_src/model', fname)
     return pkg_resources.resource_filename(__name__, rel_path)
 
 
