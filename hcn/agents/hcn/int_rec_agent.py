@@ -114,23 +114,6 @@ class IntentRecognizerAgent(Agent):
         self.episode_done = observation['episode_done']
         return observation
 
-    def _build_ex(self, ex):
-        # check if empty input (end of epoch)
-        if 'text' not in ex:
-            return
-        inputs = dict()
-        inputs['question'] = ex['text']
-        if 'labels' in ex:
-            action = ex['act']
-            slots = ex['slots']
-            for slot in slots:
-                if slot[0] == 'slot':
-                    inputs['labels'] = action['act'] + '_' + slot[1]
-                else:
-                    inputs['labels'] = action['act'] + '_' + slot[0]
-
-        return inputs
-
     def act(self):
         """Call batch act with batch of one sample."""
         return self.batch_act([self.observation])[0]
@@ -156,6 +139,10 @@ class IntentRecognizerAgent(Agent):
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
+            print(examples[0])
+            print(batch[0][0])
+            print(predictions[0])
+            print(predictions_text[0])
         else:
             batch = self.model._batchify(examples)
             predictions = self.model.predict(batch)
@@ -164,6 +151,11 @@ class IntentRecognizerAgent(Agent):
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
+
+            print(examples[0])
+            print(batch[0])
+            print(predictions[0])
+            print(predictions_text[0])
         return batch_reply
 
     def report(self):

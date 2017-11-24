@@ -51,6 +51,7 @@ SEED = 23
 np.random.seed(SEED)
 tf.set_random_seed(SEED)
 
+from keras.utils import plot_model
 
 class IntentRecognitionModel(object):
 
@@ -101,9 +102,10 @@ class IntentRecognitionModel(object):
     def _init_from_scratch(self):
         self.model = self.cnn_word_model()
         optimizer = Adam(lr=self.opt['learning_rate'], decay=self.opt['learning_decay'])
-        self.model.compile(loss='categorical_crossentropy',
+        self.model.compile(loss='binary_crossentropy',
                            optimizer=optimizer,
-                           metrics=['categorical_accuracy'])
+                           metrics=['accuracy'])
+        plot_model(self.model, to_file='/home/dilyara/data/outputs/dstc2/model.png')
 
     def save(self, fname=None):
         fname = self.opt.get('model_file', None) if fname is None else fname
@@ -123,9 +125,9 @@ class IntentRecognitionModel(object):
 
         self.model = self.cnn_word_model()
         optimizer = Adam(lr=self.opt['learning_rate'], decay=self.opt['learning_decay'])
-        self.model.compile(loss='categorical_crossentropy',
+        self.model.compile(loss='binary_crossentropy',
                            optimizer=optimizer,
-                           metrics=['categorical_accuracy'])
+                           metrics=['accuracy'])
         print('[ Loading model weights %s ]' % fname)
         self.model.load_weights(fname + '.h5')
 
@@ -158,12 +160,6 @@ class IntentRecognitionModel(object):
         y = []
         for sample in predictions:
             curr = np.zeros(self.n_classes)
-            # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
-            #         and len(sample) > 1:
-            #     for intent in sample:
-            #         curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
-            # else:
-            #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
             for intent in sample:
                 curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
             y.append(curr)
@@ -176,7 +172,6 @@ class IntentRecognitionModel(object):
             question.append(ex['question'])
         self.embedding_dict.add_items(question)
         embedding_batch = self.create_batch(question)
-
         if len(batch[0]) == 2:
             y = self._text2predictions([ex['labels'] for ex in batch])
             return embedding_batch, y
@@ -219,7 +214,6 @@ class IntentRecognitionModel(object):
 
     def predict(self, batch):
         y_pred = self.model.predict_on_batch(batch).reshape(-1, self.n_classes)
-        print(y_pred[0])
         return y_pred
 
     def shutdown(self):
@@ -233,8 +227,9 @@ class IntentRecognitionModel(object):
         for i in range(len(self.kernel_sizes)):
             output_i = Conv1D(self.opt['filters_cnn'], kernel_size=self.kernel_sizes[i],
                               activation=None, kernel_regularizer=l2(self.opt['regul_coef_conv']),
+                              bias_regularizer=l2(1000 * self.opt['regul_coef_conv']),
                               padding='same')(inp)
-            output_i = BatchNormalization()(output_i)
+            # output_i = BatchNormalization()(output_i)
             output_i = Activation('relu')(output_i)
             output_i = GlobalMaxPooling1D()(output_i)
             outputs.append(output_i)
@@ -243,13 +238,15 @@ class IntentRecognitionModel(object):
 
         output = Dropout(rate=self.opt['dropout_rate'])(output)
         output = Dense(self.opt['dense_dim'], activation=None,
-                       kernel_regularizer=l2(self.opt['regul_coef_dense']))(output)
-        output = BatchNormalization()(output)
+                       kernel_regularizer=l2(self.opt['regul_coef_dense']),
+                       bias_regularizer=l2(1000 * self.opt['regul_coef_dense']))(output)
+        # output = BatchNormalization()(output)
         output = Activation('relu')(output)
         output = Dropout(rate=self.opt['dropout_rate'])(output)
         output = Dense(self.n_classes, activation=None,
-                       kernel_regularizer=l2(self.opt['regul_coef_dense']))(output)
-        output = BatchNormalization()(output)
+                       kernel_regularizer=l2(self.opt['regul_coef_dense']),
+                       bias_regularizer = l2(1000 * self.opt['regul_coef_dense']))(output)
+        # output = BatchNormalization()(output)
         act_output = Activation('sigmoid')(output)
         model = Model(inputs=inp, outputs=act_output)
         return model
