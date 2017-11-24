@@ -71,9 +71,6 @@ class IntentRecognizerAgent(Agent):
         print('[ IntentRecognizerAgent and Model initialized ]')
 
     def _predictions2text(self, predictions):
-        # predictions: n_samples x n_classes, float values of probabilities
-        # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
-        #      for sample in predictions]
         y = []
         for sample in predictions:
             to_add = np.where(sample > self.confident_threshold)[0]
@@ -90,12 +87,6 @@ class IntentRecognizerAgent(Agent):
         y = []
         for sample in predictions:
             curr = np.zeros(self.n_classes)
-            # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
-            #         and len(sample) > 1:
-            #     for intent in sample:
-            #         curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
-            # else:
-            #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
             for intent in sample:
                 curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
             y.append(curr)
@@ -139,10 +130,10 @@ class IntentRecognizerAgent(Agent):
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
-            print(examples[0])
-            print(batch[0][0])
-            print(predictions[0])
-            print(predictions_text[0])
+            # print(examples[0])
+            # print(batch[0][0])
+            # print(predictions[0])
+            # print(predictions_text[0])
         else:
             batch = self.model._batchify(examples)
             predictions = self.model.predict(batch)
@@ -152,10 +143,10 @@ class IntentRecognizerAgent(Agent):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
 
-            print(examples[0])
-            print(batch[0])
-            print(predictions[0])
-            print(predictions_text[0])
+            # print(examples[0])
+            # print(batch[0])
+            # print(predictions[0])
+            # print(predictions_text[0])
         return batch_reply
 
     def report(self):

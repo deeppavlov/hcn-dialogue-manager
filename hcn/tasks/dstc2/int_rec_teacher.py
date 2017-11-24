@@ -85,9 +85,6 @@ class IntentRecognitionTeacher(Teacher):
             self.metrics = SeveralMetrics(opt, self.n_classes)
 
     def _predictions2text(self, predictions):
-        # predictions: n_samples x n_classes, float values of probabilities
-        # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
-        #      for sample in predictions]
         y = []
         for sample in predictions:
             to_add = np.where(sample > self.confident_threshold)[0]
@@ -115,6 +112,9 @@ class IntentRecognitionTeacher(Teacher):
             y.append(curr)
         y = np.asarray(y)
         return y
+
+    def _probabilities2onehot(self, probabilities):
+        return(1 * probabilities > self.confident_threshold)
 
     def reset(self):
         # Reset the dialog so that it is at the start of the epoch,
@@ -155,6 +155,8 @@ class IntentRecognitionTeacher(Teacher):
     def observe(self, observation):
         """Process observation for metrics. """
         if self.lastY is not None:
+            # print('Observe:', observation['text'])
+            # print('LastY', self.lastY)
             self.metrics.update(observation, self.lastY)
             if 'text' in observation.keys():
                 self.labels.append(self._text2predictions([self.lastY])[0])
@@ -203,11 +205,14 @@ class IntentRecognitionTeacher(Teacher):
 
 
     def report(self):
-
         auc_m = roc_auc_score(np.array(self.labels), np.array(self.observations), average='macro')
-        f1_m = precision_recall_fscore_support(np.array(self.labels), np.array(self.observations),  average='macro')
+        f1_m = precision_recall_fscore_support(np.array(self.labels),
+                                               self._probabilities2onehot(np.array(self.observations)),
+                                               average='macro')
         auc_w = roc_auc_score(np.array(self.labels), np.array(self.observations), average='weighted')
-        f1_w = precision_recall_fscore_support(np.array(self.labels), np.array(self.observations),  average='weighted')
+        f1_w = precision_recall_fscore_support(np.array(self.labels),
+                                               self._probabilities2onehot(np.array(self.observations)),
+                                               average='weighted')
         report = self.metrics.report().copy()
         report['auc_macro'] = auc_m
         report['f1_macro'] = f1_m

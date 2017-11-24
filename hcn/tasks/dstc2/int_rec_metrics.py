@@ -61,6 +61,7 @@ class SeveralMetrics(Metrics):
         super().__init__(opt)
         self.metrics['exact_matches_score'] = 0
         self.n_classes = n_classes
+        self.metrics['total_labels'] = 0
 
     def update(self, observations, labels):
         """Update multilabel metrics exact_matches, acc, f1"""
@@ -73,21 +74,24 @@ class SeveralMetrics(Metrics):
         # predictions is an array of given answers!
         predictions = observations.get('text', None)
 
-        #print("Teacher metrics:", observations, labels)
         if len(predictions) != len(labels):
             exact_matches = 0
             with self._lock():
-                correct = np.sum(np.array([[1. * _exact_match(predictions[i], labels[j])
-                                                             for i in range(len(predictions))]
-                                                            for j in range(len(labels))]))
+                correct = np.sum(np.array([[1 * (predictions[i] == labels[j])
+                                            for i in range(len(predictions))]
+                                           for j in range(len(labels))]))
                 self.metrics['correct'] += correct
+                self.metrics['total_labels'] += len(labels)
+                # print('Diff lengths, correct:', correct)
         else:
-            exact_matches = np.prod(np.array([1. * _exact_match(predictions[i], labels[i])
+            exact_matches = np.prod(np.array([1 * (predictions[i] == labels[i])
                                               for i in range(len(predictions))]))
             with self._lock():
-                correct = np.sum(np.array([1. * _exact_match(predictions[i], labels[i])
+                correct = np.sum(np.array([1 * (predictions[i] == labels[i])
                                                             for i in range(len(predictions))]))
                 self.metrics['correct'] += correct
+                self.metrics['total_labels'] += len(labels)
+                # print('Same lengths, correct and exact_matches', (correct, exact_matches))
 
         with self._lock():
             self.metrics['exact_matches_score'] += exact_matches
@@ -104,7 +108,7 @@ class SeveralMetrics(Metrics):
             m['exact_match_accuracy'] = round_sigfigs(
                 self.metrics['exact_matches_score'] / self.metrics['cnt'], 4)
             m['accuracy'] = round_sigfigs(
-                self.metrics['correct'] / (self.n_classes * self.metrics['cnt']), 4)
+                self.metrics['correct'] / self.metrics['total_labels'], 4)
         return m
 
     def clear(self):

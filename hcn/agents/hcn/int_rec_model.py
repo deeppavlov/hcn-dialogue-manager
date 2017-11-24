@@ -141,9 +141,6 @@ class IntentRecognitionModel(object):
         return inputs
 
     def _predictions2text(self, predictions):
-        # predictions: n_samples x n_classes, float values of probabilities
-        # y = [self.intents[np.where(sample > self.confident_threshold)[0]]
-        #      for sample in predictions]
         y = []
         for sample in predictions:
             to_add = np.where(sample > self.confident_threshold)[0]
