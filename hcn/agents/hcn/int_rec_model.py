@@ -144,16 +144,20 @@ class IntentRecognitionModel(object):
         #      for sample in predictions]
         y = []
         for sample in predictions:
-            y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+            to_add = np.where(sample > self.confident_threshold)[0]
+            if len(to_add) > 0:
+                y.append(self.intents[to_add])
+            else:
+                y.append([self.intents[np.argmax(sample)]])
         y = np.asarray(y)
         return y
 
     def _text2predictions(self, predictions):
         # predictions: list of lists with text intents in the reply
-        eye = np.eye(self.n_classes, dtype='int')
+        eye = np.eye(self.n_classes)
         y = []
         for sample in predictions:
-            curr = np.zeros(self.n_classes, dtype='int')
+            curr = np.zeros(self.n_classes)
             # if (type(sample) is list or type(sample) is np.ndarray or type(sample) is tuple) \
             #         and len(sample) > 1:
             #     for intent in sample:
@@ -161,7 +165,6 @@ class IntentRecognitionModel(object):
             # else:
             #     curr = eye[np.where(self.intents == sample[0])[0]].reshape(-1)
             for intent in sample:
-                #print(sample)
                 curr += eye[np.where(self.intents == intent)[0]].reshape(-1)
             y.append(curr)
         y = np.asarray(y)
@@ -207,6 +210,7 @@ class IntentRecognitionModel(object):
 
         self.train_auc_m = roc_auc_score(y, y_pred, average='macro')
         self.train_auc_w = roc_auc_score(y, y_pred, average='weighted')
+
         y_pred_ = self._text2predictions(self._predictions2text(y_pred))
         self.train_f1_m = precision_recall_fscore_support(y, y_pred_, average='macro')
         self.train_f1_w = precision_recall_fscore_support(y, y_pred_, average='weighted')
@@ -214,7 +218,8 @@ class IntentRecognitionModel(object):
         return y_pred
 
     def predict(self, batch):
-        y_pred = np.array(self.model.predict_on_batch(batch)).reshape(-1, self.n_classes)
+        y_pred = self.model.predict_on_batch(batch).reshape(-1, self.n_classes)
+        print(y_pred[0])
         return y_pred
 
     def shutdown(self):

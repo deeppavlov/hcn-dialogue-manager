@@ -90,7 +90,11 @@ class IntentRecognitionTeacher(Teacher):
         #      for sample in predictions]
         y = []
         for sample in predictions:
-            y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+            to_add = np.where(sample > self.confident_threshold)[0]
+            if len(to_add) > 0:
+                y.append(self.intents[to_add])
+            else:
+                y.append([self.intents[np.argmax(sample)]])
         y = np.asarray(y)
         return y
 
@@ -199,10 +203,11 @@ class IntentRecognitionTeacher(Teacher):
 
 
     def report(self):
-        auc_m = roc_auc_score(self.labels, self.observations, average='macro')
-        f1_m = precision_recall_fscore_support(self.labels, self.observations,  average='macro')
-        auc_w = roc_auc_score(self.labels, self.observations, average='weighted')
-        f1_w = precision_recall_fscore_support(self.labels, self.observations,  average='weighted')
+
+        auc_m = roc_auc_score(np.array(self.labels), np.array(self.observations), average='macro')
+        f1_m = precision_recall_fscore_support(np.array(self.labels), np.array(self.observations),  average='macro')
+        auc_w = roc_auc_score(np.array(self.labels), np.array(self.observations), average='weighted')
+        f1_w = precision_recall_fscore_support(np.array(self.labels), np.array(self.observations),  average='weighted')
         report = self.metrics.report().copy()
         report['auc_macro'] = auc_m
         report['f1_macro'] = f1_m
@@ -258,7 +263,10 @@ class IntentRecognitionTeacher(Teacher):
                             if len(act['slots']) == 0:
                                 intents.append(act['act'])
                     else:
-                        continue
+                        if replica['text']:
+                            intents.append('unknown')
+                        else:
+                            continue
                     x = data_preprocessing([replica['text']])[0]
                     y = intents
                     yield (x, y, None, None, None), True

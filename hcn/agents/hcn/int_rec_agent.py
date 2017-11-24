@@ -76,7 +76,11 @@ class IntentRecognizerAgent(Agent):
         #      for sample in predictions]
         y = []
         for sample in predictions:
-            y.append(self.intents[np.where(sample > self.confident_threshold)[0]])
+            to_add = np.where(sample > self.confident_threshold)[0]
+            if len(to_add) > 0:
+                y.append(self.intents[to_add])
+            else:
+                y.append([self.intents[np.argmax(sample)]])
         y = np.asarray(y)
         return y
 
@@ -148,9 +152,7 @@ class IntentRecognizerAgent(Agent):
             self.n_examples += len(examples)
             batch = self.model._batchify(examples)
             predictions = self.model.update(batch)
-            #print(predictions)
             predictions_text = self._predictions2text(predictions)
-            #print(predictions_text)
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
@@ -158,10 +160,10 @@ class IntentRecognizerAgent(Agent):
             batch = self.model._batchify(examples)
             predictions = self.model.predict(batch)
             predictions_text = self._predictions2text(predictions)
+
             for i in range(len(predictions)):
                 batch_reply[valid_inds[i]]['text'] = predictions_text[i]
                 batch_reply[valid_inds[i]]['score'] = predictions[i]
-
         return batch_reply
 
     def report(self):

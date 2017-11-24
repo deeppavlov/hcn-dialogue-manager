@@ -169,6 +169,7 @@ def build(opt):
                         if len(act['slots']) == 0:
                             all_intents.append(act['act'])
 
+
         with open(os.path.join(dpath, 'dstc2-val.jsonlist')) as read:
             for line in read:
                 line = line.strip()

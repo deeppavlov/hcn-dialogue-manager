@@ -72,7 +72,8 @@ class SeveralMetrics(Metrics):
         correct = 0
         # predictions is an array of given answers!
         predictions = observations.get('text', None)
-        #print('Teacher update:', predictions, labels)
+
+        #print("Teacher metrics:", observations, labels)
         if len(predictions) != len(labels):
             exact_matches = 0
             with self._lock():
