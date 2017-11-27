@@ -9,4 +9,4 @@ def load_nerpa(opt, version=None):
         os.makedirs(dpath, exist_ok=True)
         build_data.download(url, dpath, 'dstc_ner_model.tar.gz')
         build_data.untar(dpath, 'dstc_ner_model.tar.gz')
-    build_data.mark_done(dpath, version_string=version)
+        build_data.mark_done(dpath, version_string=version)

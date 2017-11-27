@@ -56,25 +56,27 @@ class NerProcessingAgent(Agent):
 
 
         # Load network parameters
-        (ner_params_filepath,
-         ner_dict_filepath,
-         ner_model_filepath,
-         ner_slot_vals_filepath) = self.get_parameters_directories(opt)
-        if not os.path.isfile(ner_params_filepath):
-            load_nerpa(opt)
-        with open(ner_params_filepath) as f:
+        (ner_params_path,
+         ner_dict_path,
+         ner_model_path,
+         ner_slot_vals_path) = self.get_parameters_directories(opt)
+
+        # Load model files and dicts if needed
+        load_nerpa(opt)
+
+        with open(ner_params_path) as f:
             network_params = json.load(f)
 
         # Create corpus object
-        self._corpus = Corpus(dicts_filepath=ner_dict_filepath)
+        self._corpus = Corpus(dicts_filepath=ner_dict_path)
 
         # Build NER model
         self.model = NER(self._corpus,
-                         pretrained_model_filepath=ner_model_filepath,
+                         pretrained_model_filepath=ner_model_path,
                          **network_params)
 
         # Load slots, vals, and vals variations
-        with open(ner_slot_vals_filepath) as f:
+        with open(ner_slot_vals_path) as f:
             self._slot_vals = json.load(f)
 
     def observe(self, observation):
