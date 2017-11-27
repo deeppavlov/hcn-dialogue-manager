@@ -44,10 +44,13 @@ class HCNPreprocessAgent(Agent):
 
         # track all slot names
         self.slot_names = []
-        if opt.get('dict_file')\
+        if opt.get('dict_file') is not None\
            and os.path.isfile(opt['dict_file'] + '.slots'):
             self.slot_names = json.load(open(opt['dict_file'] + '.slots', 'r'))
-        elif opt.get('model_file') \
+        elif opt.get('pretrained_model') is not None\
+            and os.path.isfile(opt['model_file'] + '.dict.slots'):
+            self.slot_names = json.load(open(opt['pretrained_model'] + '.dict.slots', 'r'))
+        elif opt.get('model_file') is not None\
             and os.path.isfile(opt['model_file'] + '.dict.slots'):
             self.slot_names = json.load(open(opt['model_file'] + '.dict.slots', 'r'))
 

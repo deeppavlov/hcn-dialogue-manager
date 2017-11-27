@@ -39,8 +39,6 @@ class HybridCodeNetworkAgent(Agent):
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
         argparser.add_argument('--debug', type='bool', default=False,
                                help='Print debug output.')
-        argparser.add_argument('--debug-wrong', type='bool', default=False,
-                               help='Print debug output.')
         return argparser
 
     @staticmethod
@@ -156,7 +154,7 @@ class HybridCodeNetworkAgent(Agent):
             self.metrics.train_loss += loss
             self.metrics.conf_matrix[pred, ex[1]] += 1
             self.metrics.n_train_corr_examples += int(pred_text == label_text)
-            if self.opt['debug_wrong'] and (pred_text != label_text):
+            if self.opt['debug'] and (pred_text != label_text):
                 print("True: '{}'\nPredicted: '{}'".format(
                     label_text, pred_text))
 # TODO: update number of correct dialogs
@@ -165,7 +163,8 @@ class HybridCodeNetworkAgent(Agent):
             self.prev_action *= 0.
             self.prev_action[pred] = 1.
             if self.opt['debug']:
-                print("Probs = {}, pred = {}".format(probs, pred))
+                print("Top3 preds =", [self.templates.actions[i]\
+                                       for i in np.argsort(probs)[-3:][::-1]])
             reply['text'] = self._generate_response(pred)
 
         # reinitilize entity tracker for new dialog

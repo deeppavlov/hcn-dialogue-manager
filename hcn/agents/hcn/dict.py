@@ -93,14 +93,17 @@ class WordDictionaryAgent(SpacyDictionaryAgent):
 
         # initialize DictionaryAgent
         self.opt = copy.deepcopy(opt)
-        if self.opt.get('dict_file'):
+        if self.opt.get('dict_file') is not None:
             self.opt['dict_file'] = self.opt['dict_file'] + '.words'
-        elif self.opt.get('model_file'):
+        elif self.opt.get('pretrained_model') is not None:
+            self.opt['dict_file'] = self.opt['pretrained_model'] + '.dict.words'
+        elif self.opt.get('model_file') is not None:
             self.opt['dict_file'] = self.opt['model_file'] + '.dict.words'
         super().__init__(self.opt, shared)
 
         # index words in embedding file
-        if self.opt['pretrained_words'] and self.opt.get('embedding_file'):
+        if self.opt['pretrained_words'] is not None\
+           and self.opt.get('embedding_file') is not None:
             print('[ Indexing words with embeddings... ]')
             self.embedding_words = set()
             with open(self.opt['embedding_file']) as f:
@@ -162,11 +165,13 @@ class ActionDictionaryAgent(SpacyDictionaryAgent):
             'dict_starttoken': None,
             'dict_language': SpacyDictionaryAgent.default_lang
         }
-        if opt.get('action_file'):
+        if opt.get('action_file') is not None:
             self.opt['dict_file'] = opt['action_file']
-        elif opt.get('dict_file'):
+        elif opt.get('dict_file') is not None:
             self.opt['dict_file'] = opt['dict_file'] + '.actions'
-        elif opt.get('model_file'):
+        elif opt.get('pretrained_model') is not None:
+            self.opt['dict_file'] = opt['pretrained_model'] + '.dict.actions'
+        elif opt.get('model_file') is not None:
             self.opt['dict_file'] = opt['model_file'] + '.dict.actions'
         super().__init__(self.opt, shared)
         '''if shared:
