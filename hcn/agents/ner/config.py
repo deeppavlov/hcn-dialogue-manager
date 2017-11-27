@@ -17,23 +17,16 @@ limitations under the License.
 
 def add_cmdline_args(parser):
     # Runtime environment
-    agent = parser.add_argument_group('HCN Arguments')
-    agent.add_argument('--no-cuda', type='bool', default=False)
-    agent.add_argument('--gpu', type=int, default=-1)
-    agent.add_argument('--random_seed', type=int, default=123098)
-
-    # Basics
-    agent.add_argument('--pretrained-model', type=str, default=None,
-                       help='Load dict/features/weights/opts/database from '
-                       'the file prefix')
-    agent.add_argument('--log-file', type=str, default=None)
-# agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],
-#                   help='Type of entity tracker to use. Implemented only '
-#                   'for dialog_babi5 and dialog_babi6.')
-
-    # Model specification
-    agent.add_argument('--learning-rate', type=float, default=.1)
-    agent.add_argument('--epoch-num', type=int, default=1)
-    agent.add_argument('--hidden-dim', type=int, default=128)
-    agent.add_argument('--action-mask', type='bool', default=False,
-                       help='Use action mask to put constrains on actions.')
+    agent = parser.add_argument_group('NER Arguments')
+    agent.add_argument('--ner-dict-filepath',
+                       default='build/nerpa/dict.txt',
+                       help='Path to the nerpa dictionary for Corpus class instance.')
+    agent.add_argument('--ner-model-filepath',
+                       default='build/nerpa/ner_model.ckpt',
+                       help='Path to the NER tensorflow model.')
+    agent.add_argument('--ner-params-filepath',
+                       default='build/nerpa/params.json',
+                       help='Path to the parameters of the NER model')
+    agent.add_argument('--ner-slot-vals-filepath',
+                       default='build/nerpa/slot_vals.json',
+                       help='Path to the slot values dictionary (with variations of the slot values)')
