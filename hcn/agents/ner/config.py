@@ -18,15 +18,18 @@ limitations under the License.
 def add_cmdline_args(parser):
     # Runtime environment
     agent = parser.add_argument_group('NER Arguments')
+    agent.add_argument('--ner-directory',
+                       default='build/nerpa/',
+                       help='Path to the nerpa agent dicts and model files')
     agent.add_argument('--ner-dict-filepath',
-                       default='build/nerpa/dict.txt',
-                       help='Path to the nerpa dictionary for Corpus class instance.')
+                       default='dict.txt',
+                       help='File name of the nerpa dictionary for Corpus class instance.')
     agent.add_argument('--ner-model-filepath',
-                       default='build/nerpa/ner_model.ckpt',
-                       help='Path to the NER tensorflow model.')
+                       default='ner_model.ckpt',
+                       help='File name of  the NER tensorflow model.')
     agent.add_argument('--ner-params-filepath',
-                       default='build/nerpa/params.json',
-                       help='Path to the parameters of the NER model')
+                       default='params.json',
+                       help='File name of  the parameters of the NER model')
     agent.add_argument('--ner-slot-vals-filepath',
-                       default='build/nerpa/slot_vals.json',
-                       help='Path to the slot values dictionary (with variations of the slot values)')
+                       default='slot_vals.json',
+                       help='File name of  the slot values dictionary (with variations of the slot values)')

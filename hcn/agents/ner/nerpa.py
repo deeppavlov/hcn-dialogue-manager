@@ -15,6 +15,7 @@ limitations under the License.
 """
 
 import json
+import os
 
 from parlai.core.agents import Agent
 
@@ -22,6 +23,7 @@ from . import config
 from .model import NER
 from fuzzywuzzy import process
 from .corpus import Corpus
+from .build import load_nerpa
 
 
 class NerProcessingAgent(Agent):
@@ -46,25 +48,33 @@ class NerProcessingAgent(Agent):
         # only create an empty dummy class when sharing
         if shared is not None:
             self.is_shared = True
-            return
 
         # intialize parameters
         self.is_shared = False
 
+        # Check existance of model files
+
+
         # Load network parameters
-        with open(opt['ner_params_filepath']) as f:
+        (ner_params_filepath,
+         ner_dict_filepath,
+         ner_model_filepath,
+         ner_slot_vals_filepath) = self.get_parameters_directories(opt)
+        if not os.path.isfile(ner_params_filepath):
+            load_nerpa(opt)
+        with open(ner_params_filepath) as f:
             network_params = json.load(f)
 
         # Create corpus object
-        self._corpus = Corpus(dicts_filepath=opt['ner_dict_filepath'])
+        self._corpus = Corpus(dicts_filepath=ner_dict_filepath)
 
         # Build NER model
         self.model = NER(self._corpus,
-                         pretrained_model_filepath=opt['ner_model_filepath'],
+                         pretrained_model_filepath=ner_model_filepath,
                          **network_params)
 
         # Load slots, vals, and vals variations
-        with open(opt['ner_slot_vals_filepath']) as f:
+        with open(ner_slot_vals_filepath) as f:
             self._slot_vals = json.load(f)
 
     def observe(self, observation):
@@ -171,3 +181,10 @@ class NerProcessingAgent(Agent):
 
         return entities, slots
 
+    @staticmethod
+    def get_parameters_directories(opt):
+        ner_params_filepath = os.path.join(opt['ner_directory'], opt['ner_params_filepath'])
+        ner_dict_filepath = os.path.join(opt['ner_directory'], opt['ner_dict_filepath'])
+        ner_model_filepath = os.path.join(opt['ner_directory'], opt['ner_model_filepath'])
+        ner_slot_vals_filepath = os.path.join(opt['ner_directory'], opt['ner_slot_vals_filepath'])
+        return ner_params_filepath, ner_dict_filepath, ner_model_filepath, ner_slot_vals_filepath
