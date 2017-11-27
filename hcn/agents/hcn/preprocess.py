@@ -48,7 +48,7 @@ class HCNPreprocessAgent(Agent):
            and os.path.isfile(opt['dict_file'] + '.slots'):
             self.slot_names = json.load(open(opt['dict_file'] + '.slots', 'r'))
         elif opt.get('pretrained_model') is not None\
-            and os.path.isfile(opt['model_file'] + '.dict.slots'):
+            and os.path.isfile(opt['pretrained_model'] + '.dict.slots'):
             self.slot_names = json.load(open(opt['pretrained_model'] + '.dict.slots', 'r'))
         elif opt.get('model_file') is not None\
             and os.path.isfile(opt['model_file'] + '.dict.slots'):

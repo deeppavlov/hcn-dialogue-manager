@@ -32,6 +32,8 @@ def add_cmdline_args(parser):
 #                   'for dialog_babi5 and dialog_babi6.')
 
     # Dictionaries configuration
+    agent.add_argument('--slot-model', type=str, default=None,
+                        help='Slot filling pretrained model')
     agent.add_argument('--fasttext-model', type=str, default=None,
                         help='Fasttext pretrained model')
     agent.add_argument('--embedding-file', type=str, default=None,

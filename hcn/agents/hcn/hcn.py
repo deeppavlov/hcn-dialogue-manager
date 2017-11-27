@@ -18,12 +18,12 @@ import copy
 import numpy as np
 import re
 
-from parlai.core.agents import Agent
+from parlai.core.agents import Agent, create_agent
+from parlai.core.params import ParlaiParser
 
 from . import config
 from . import tracker
 from . import templates as tmpl
-from . import slotfill
 from .emb_dict import EmbeddingsDict
 from .model import HybridCodeNetworkModel
 from .preprocess import HCNPreprocessAgent
@@ -91,7 +91,7 @@ class HybridCodeNetworkAgent(Agent):
         self.tracker = tracker.DefaultTracker(self.preps.slot_names)
 
         # initialize slot filler
-        self.slot_filler = slotfill.Nerpa()
+        self.slot_model = self._load_slot_model()
 
         # intialize parameters
         self.is_shared = False
@@ -115,6 +115,25 @@ class HybridCodeNetworkAgent(Agent):
         print("Observation size =", opt['obs_size'])
 
         self.model = HybridCodeNetworkModel(opt)
+
+    def _load_slot_model(self):
+        if self.opt.get('slot_model') is not None:
+            print("Loading `{}` slot classifier.".format(self.opt['slot_model']))
+            opts = ['-m', self.opt['slot_model']]
+            parser = ParlaiParser(True)
+            parser.add_model_args(opts)
+            return create_agent(parser.parse_args(opts))
+        print("Working without slot classifier.")
+        return None
+
+    def _get_slots(self, text):
+        if self.slot_model is not None:
+            self.slot_model.observe({
+                'text': text,
+                'episode_done': True
+            })
+            return self.slot_model.act()
+        return {}
 
     def observe(self, observation):
         """Receive an observation/action dict."""
@@ -196,12 +215,12 @@ class HybridCodeNetworkAgent(Agent):
 
         # Text entity features
         prev_slots = self.tracker.get_slots()
-# TODO: more abstract ner interface
+# TODO: remote try+except ner wrapping
         #print("Predicting NER for `{}`.".format(ex['text']))
         try:
-            self.tracker.update_slots(self.slot_filler.predict_slots(ex['text']))
+            self.tracker.update_slots(self._get_slots(' '.join(tokens)))
         except Exception as msg:
-            print("During slot filling exception occured.")
+            print("Exception during slot extraction:", msg)
         if self.opt['debug']:
             print("Text = ", ex['text'])
             print("Updating entities, old = ", prev_slots)

@@ -13,9 +13,10 @@ mkdir -p ./build
 
 # train for 24 epochs
 python3 ./utils/train_model.py -t hcn.tasks.dstc2.agents\
-                               -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
                                -mf ./build/hcn\
                                -dt train:ordered\
+                               -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
+                               --slot-model hcn.agents.ner.nerpa:NerProcessingAgent\
                                --template-file ./data/dstc2-templates.txt\
                                --embedding-file ./data/glove.42B.300d.txt\
                                --num-epochs -1\
@@ -31,5 +32,6 @@ python3 ./utils/train_model.py -t hcn.tasks.dstc2.agents\
 # interactive evaluate
 python3 ./utils/interactive.py -m hcn.agents.hcn.hcn:HybridCodeNetworkAgent\
                                --pretrained-model ./build/hcn\
-                               --dict-file ./build/hcn.dict\
-                               --template-file ./data/dstc2-templates.txt
+                               --slot-model hcn.agents.ner.nerpa:NerProcessingAgent\
+                               --template-file ./data/dstc2-templates.txt\
+                               --embedding-file ./data/glove.42B.300d.txt\
