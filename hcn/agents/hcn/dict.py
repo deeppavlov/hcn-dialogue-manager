@@ -44,7 +44,6 @@ class SpacyDictionaryAgent(DictionaryAgent):
     def __init__(self, opt, shared):
         super().__init__(self.opt, shared)
         self.word_tok = None
-        print(self.opt)
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""

@@ -40,6 +40,8 @@ def add_cmdline_args(parser):
                         help='List of used word embeddings: w e1 .. ed.')
     agent.add_argument('--template-file', type=str, default=None,
                        help='File with dataset templates if present.')
+    agent.add_argument('--template-path-relative', type=bool, default=False,
+                       help='Template path is relative to parlai data.')
 
     # Model specification
     agent.add_argument('--learning-rate', type=float, default=.1)

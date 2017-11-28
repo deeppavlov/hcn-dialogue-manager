@@ -14,6 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 """
 
+import os
 import copy
 import numpy as np
 import re
@@ -75,6 +76,11 @@ class HybridCodeNetworkAgent(Agent):
         # load templates if present
         self.templates = None
         if self.opt.get("template_file") is not None:
+            if self.opt['template_path_relative']:
+                self.opt['template_file'] = os.path.join(
+                    self.opt['datapath'],
+                    *os.path.split(self.opt['template_file'])
+                )
             self.templates = tmpl.Templates().load(self.opt['template_file'])
             print("[using {} provided templates from `{}`]"\
                   .format(len(self.templates), self.opt['template_file']))
@@ -85,7 +91,11 @@ class HybridCodeNetworkAgent(Agent):
         # initialize embeddings
         self.embeddings = None
         if self.opt.get("embedding_file") is not None:
+            print("[loading embeddings from `{}`]"\
+                  .format(self.opt['embedding_file']))
             self.embeddings = EmbeddingsDict(opt)
+        else:
+            print("[no embeddings provided]")
 
         # initialize tracker
         self.tracker = tracker.DefaultTracker(self.preps.slot_names)
@@ -102,28 +112,28 @@ class HybridCodeNetworkAgent(Agent):
         self.emb_size = 0
         if self.embeddings is not None:
             self.emb_size = self.embeddings.dim
-        print("Embedding size =", self.emb_size)
         self.prev_action = np.zeros(self.n_actions, dtype=np.float32)
 
         # initialize metrics
         self.metrics = DialogMetrics(self.n_actions)
 
         opt['action_size'] = self.n_actions
-# TODO: enrich features
         opt['obs_size'] = 4 + len(self.preps.words) + self.emb_size +\
                 2 * self.tracker.state_size + self.n_actions
-        print("Observation size =", opt['obs_size'])
+        if self.opt['debug']:
+            print("Embedding size =", self.emb_size)
+            print("Observation size =", opt['obs_size'])
 
         self.model = HybridCodeNetworkModel(opt)
 
     def _load_slot_model(self):
         if self.opt.get('slot_model') is not None:
-            print("Loading `{}` slot classifier.".format(self.opt['slot_model']))
+            print("[loading `{}` slot classifier]".format(self.opt['slot_model']))
             opts = ['-m', self.opt['slot_model']]
             parser = ParlaiParser(True)
             parser.add_model_args(opts)
             return create_agent(parser.parse_args(opts))
-        print("Working without slot classifier.")
+        print("[no slot classifier provided]")
         return None
 
     def _get_slots(self, text):
@@ -211,27 +221,20 @@ class HybridCodeNetworkAgent(Agent):
             bow_features[self.preps.words[t]] = 1.
 
         # Embeddings
-        emb_features = self.embeddings.encode(tokens)
+        emb_features = np.array([], dtype=np.float32)
+        if self.embeddings is not None:
+            emb_features = self.embeddings.encode(tokens)
 
         # Text entity features
         prev_slots = self.tracker.get_slots()
 # TODO: remote try+except ner wrapping
-        #print("Predicting NER for `{}`.".format(ex['text']))
         try:
             self.tracker.update_slots(self._get_slots(' '.join(tokens)))
         except Exception as msg:
             print("Exception during slot extraction:", msg)
-        if self.opt['debug']:
-            print("Text = ", ex['text'])
-            print("Updating entities, old = ", prev_slots)
-        if self.opt['debug']:
-            print("Updating entities, new = ", self.tracker.get_slots())
         binary_features = self.tracker.binary_features()
         diff_features = self.tracker.diff_features(prev_slots)
         ent_features = np.hstack((binary_features, diff_features))
-        if self.opt['debug']:
-            print("Bow feats shape = {}, ent feats shape = {}".format(
-                bow_features.shape, ent_features.shape))
         # Other features
         context_features = np.array([
             #is_silence(ex['text']),
@@ -249,6 +252,11 @@ class HybridCodeNetworkAgent(Agent):
             (self.db_result == {}) * 1.
             ], dtype=np.float32)
         if self.opt['debug']:
+            print("Text = ", ex['text'])
+            print("Updating entities, old = ", prev_slots)
+            print("Updating entities, new = ", self.tracker.get_slots())
+            print("Bow feats shape = {}, ent feats shape = {}".format(
+                bow_features.shape, ent_features.shape))
             print("Slots = ", self.tracker.get_slots())
             print("Tracker features = ", ent_features)
             print("Current db result =", self.db_result)
@@ -286,9 +294,7 @@ class HybridCodeNetworkAgent(Agent):
                 label = ex.get('labels', [''])[0]
                 targets.append((label, self.templates.actions.index(ex['act'])))
             elif 'labels' in ex:
-                print("No `act` field!")
                 ex.pop('label_candidates')
-                print(ex)
         else:
             for label in ex.get('labels', []):
                 try:
