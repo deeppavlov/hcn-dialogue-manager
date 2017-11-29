@@ -38,7 +38,7 @@ class HybridCodeNetworkAgent(Agent):
     def add_cmdline_args(argparser):
         config.add_cmdline_args(argparser)
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
-        argparser.add_argument('--debug', type='bool', default=False,
+        argparser.add_argument('--debug', action='store_true',
                                help='Print debug output.')
         return argparser
 

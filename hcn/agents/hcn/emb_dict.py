@@ -16,6 +16,7 @@ limitations under the License.
 
 import os
 import copy
+import re
 import numpy as np
 import urllib.request
 import fasttext
@@ -75,11 +76,17 @@ class EmbeddingsDict(object):
             return np.mean(embs, axis=0)
         return np.zeros(self.dim, dtype=np.float32)
 
-    def save_items(self, fname):
-        if self.opt.get('embedding_file') is not None:
-            fname = self.opt['embedding_file']
-        else:
-            fname += '.emb'
+    def save_items(self, fname=None):
+        if fname is None:
+            if self.opt.get('embedding_file') is not None:
+                fname = self.opt['embedding_file']
+            elif self.opt.get('pretrained_model') is not None:
+                fname += self.opt['pretrained_model'] + '.emb'
+            elif self.opt.get('model_file') is not None:
+                fname += self.opt['model_file'] + '.emb'
+            else:
+                print("Warning! no save file for embeddings provided.")
+                return
         f = open(fname, 'w')
         string = '\n'.join([el[0] + ' ' + self.emb2str(el[1]) for el in self.tok2emb.items()])
         f.write(string)
@@ -104,11 +111,11 @@ class EmbeddingsDict(object):
         else:
             print('Loading existing dictionary from %s.' % fname)
             with open(fname, 'r') as f:
-                for line in f:
-                    values = line.strip().rsplit(sep=' ')
+                for ln in f:
+                    values = re.split('[ \t]', ln.strip())
                     word = values[0]
-                    weights = np.asarray(values[1:], dtype=np.float32)
-                    self.tok2emb[word] = weights
+                    embed = np.asarray(values[1:], dtype=np.float32)
+                    self.tok2emb[word] = embed
                     if not self.dim:
-                        self.dim = len(weights)
+                        self.dim = len(embed)
 
