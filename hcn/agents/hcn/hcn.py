@@ -28,7 +28,6 @@ from . import templates as tmpl
 from .emb_dict import EmbeddingsDict
 from .model import HybridCodeNetworkModel
 from .preprocess import HCNPreprocessAgent
-from .utils import is_silence, is_null_api_answer, is_api_answer
 from .metrics import DialogMetrics
 
 
@@ -38,8 +37,6 @@ class HybridCodeNetworkAgent(Agent):
     def add_cmdline_args(argparser):
         config.add_cmdline_args(argparser)
         HybridCodeNetworkAgent.dictionary_class().add_cmdline_args(argparser)
-        argparser.add_argument('--debug', action='store_true',
-                               help='Print debug output.')
         return argparser
 
     @staticmethod
@@ -60,30 +57,16 @@ class HybridCodeNetworkAgent(Agent):
             self.is_shared = True
             return
 
-        # database
-        # self.database = None
-        # if not shared and opt.get('model_file'):
-        #     database_file = opt['model_file'] + '.db'
-        #     self.database = DatabaseSimulator(database_file)
-
-        # initialize entity tracker
-        #self.ent_tracker = None
-        #if self.opt['tracker'] == 'babi5':
-        #    self.ent_tracker = entities.Babi5EntityTracker()
-        #elif self.opt['tracker'] == 'babi6':
-        #    self.ent_tracker = entities.Babi6EntityTracker()
-
         # load templates if present
         self.templates = None
-        if self.opt.get("template_file") is not None:
-            if self.opt['template_path_relative']:
-                self.opt['template_file'] = os.path.join(
-                    self.opt['datapath'],
-                    *os.path.split(self.opt['template_file'])
-                )
-            self.templates = tmpl.Templates().load(self.opt['template_file'])
-            print("[using {} provided templates from `{}`]"\
-                  .format(len(self.templates), self.opt['template_file']))
+        if self.opt['template_path_relative']:
+            self.opt['template_file'] = os.path.join(
+                self.opt['datapath'],
+                *os.path.split(self.opt['template_file'])
+            )
+        self.templates = tmpl.Templates().load(self.opt['template_file'])
+        print("[using {} provided templates from `{}`]"\
+                .format(len(self.templates), self.opt['template_file']))
 
         # initialize word dictionary, action templates and embeddings
         self.preps = HybridCodeNetworkAgent.dictionary_class()(opt)
@@ -106,9 +89,7 @@ class HybridCodeNetworkAgent(Agent):
         # intialize parameters
         self.is_shared = False
         self.db_result = None
-        self.n_actions = len(self.preps.actions)
-        if self.templates is not None:
-            self.n_actions = len(self.templates)
+        self.n_actions = len(self.templates)
         self.emb_size = 0
         if self.embeddings is not None:
             self.emb_size = self.embeddings.dim
@@ -120,9 +101,6 @@ class HybridCodeNetworkAgent(Agent):
         opt['action_size'] = self.n_actions
         opt['obs_size'] = 4 + len(self.preps.words) + self.emb_size +\
                 2 * self.tracker.state_size + self.n_actions
-        if self.opt['debug']:
-            print("Embedding size =", self.emb_size)
-            print("Observation size =", opt['obs_size'])
 
         self.model = HybridCodeNetworkModel(opt)
 
@@ -183,17 +161,11 @@ class HybridCodeNetworkAgent(Agent):
             self.metrics.train_loss += loss
             self.metrics.conf_matrix[pred, ex[1]] += 1
             self.metrics.n_train_corr_examples += int(pred_text == label_text)
-            if self.opt['debug'] and (pred_text != label_text):
-                print("True: '{}'\nPredicted: '{}'".format(
-                    label_text, pred_text))
 # TODO: update number of correct dialogs
         else:
             probs, pred = self.model.predict(*ex)
             self.prev_action *= 0.
             self.prev_action[pred] = 1.
-            if self.opt['debug']:
-                print("Top3 preds =", [self.templates.actions[i]\
-                                       for i in np.argsort(probs)[-3:][::-1]])
             reply['text'] = self._generate_response(pred)
 
         # reinitilize entity tracker for new dialog
@@ -202,8 +174,6 @@ class HybridCodeNetworkAgent(Agent):
             self.db_result = None
             self.prev_action *= 0.
             self.model.reset_state()
-            if self.opt['debug']:
-                print("----episode done----")
 
         return reply
 
@@ -227,40 +197,18 @@ class HybridCodeNetworkAgent(Agent):
 
         # Text entity features
         prev_slots = self.tracker.get_slots()
-# TODO: remote try+except ner wrapping
-        try:
-            self.tracker.update_slots(self._get_slots(' '.join(tokens)))
-        except Exception as msg:
-            print("Exception during slot extraction:", msg)
+        self.tracker.update_slots(self._get_slots(' '.join(tokens)))
+
         binary_features = self.tracker.binary_features()
         diff_features = self.tracker.diff_features(prev_slots)
         ent_features = np.hstack((binary_features, diff_features))
         # Other features
         context_features = np.array([
-            #is_silence(ex['text']),
             sum(binary_features),
             sum(diff_features),
-            #bool(self.preps.database.search(self.ent_tracker.entities))*1.,
-            #(not self.preps.database.search(self.ent_tracker.entities))*1.,
-            #bool(self.preps.database.search(
-            #    {'R_cuisine': curr_cuisine} if curr_cuisine else {})) * 1.,
-            #(self.observation.get('db_result') is None) * 1.,
             (self.observation.get('db_result') == {}) * 1.,
-            #bool(self.observation.get('db_result')) * 1.,
-            #(self.db_result is None) * 1.,
-            #bool(self.db_result) * 1.,
             (self.db_result == {}) * 1.
             ], dtype=np.float32)
-        if self.opt['debug']:
-            print("Text = ", ex['text'])
-            print("Updating entities, old = ", prev_slots)
-            print("Updating entities, new = ", self.tracker.get_slots())
-            print("Bow feats shape = {}, ent feats shape = {}".format(
-                bow_features.shape, ent_features.shape))
-            print("Slots = ", self.tracker.get_slots())
-            print("Tracker features = ", ent_features)
-            print("Current db result =", self.db_result)
-            print("Context features = ", context_features)
         features = np.hstack((
             bow_features, emb_features, ent_features, context_features,
             self.prev_action
@@ -269,56 +217,26 @@ class HybridCodeNetworkAgent(Agent):
         # constructing mask of allowed actions
         action_mask = np.ones(self.n_actions, dtype=np.float32)
         if self.opt['action_mask']:
-# TODO: acction mask
+# TODO: non-ones action mask
             for a_id in range(self.n_actions):
                 tmpl = str(self.templates.templates[a_id])
                 for entity in re.findall('#{}', tmpl):
                     if entity not in self.tracker.get_slots()\
                        and entity not in (self.db_result or {}):
                         action_mask[a_id] = 0
-            #for a_id in range(self.n_actions):
-            #    action = self.preps.actions[int(a_id)]
-                #if self.opt['debug']:
-                #    print("Id {} -> template '{}'".format(a_id, action))
-            #    for entity in re.findall('R_[a-z_]*', action):
-            #        if (entity not in self.ent_tracker.entities) and \
-            #                (entity not in (self.db_result or {})):
-            #            action_mask[a_id] = 0.
-        if self.opt['debug']:
-            print("Action_mask shape = ", action_mask.shape)
 
         # extract action templates
         targets = []
-        if self.templates:
-            if ex.get('act'):
-                label = ex.get('labels', [''])[0]
-                targets.append((label, self.templates.actions.index(ex['act'])))
-            elif 'labels' in ex:
-                ex.pop('label_candidates')
-        else:
-            for label in ex.get('labels', []):
-                try:
-                    template = self.preps.actions.get_template(
-                        self.preps.words.tokenize(label))
-                    action = self.preps.actions[template]
-                    #if self.opt['debug']:
-                    #    print("Label '{}' -> template '{}' -> id {}"
-                    #        .format(label, template, action))
-                except:
-                    raise RuntimeError('Invalid label. Should match one of'
-                                    'action templates from train.')
-                targets.append((label, action))
+        if self.templates and ex.get('act') is not None:
+            label = ex.get('labels', [''])[0]
+            targets.append((label, self.templates.actions.index(ex['act'])))
+
         # in case of prediction do not return action
         if not targets:
             return (features, action_mask)
 
         # take only first label
         action = targets[0][1]
-        #if self.opt['debug'] and (action_mask[action] < 1):
-        #    template = self.preps.actions.get_template(
-        #                    self.preps.words.tokenize(label))
-        #    print("True action forbidden in action_mask: ",
-        #          targets[0], template)
 
         return (features, action, action_mask)
 
@@ -327,23 +245,12 @@ class HybridCodeNetworkAgent(Agent):
         Convert action template id and entities from tracker
         to final response.
         """
-        if self.templates:
-            template = self.templates.templates[int(action_id)]
-        else:
-            template = self.preps.actions[int(action_id)]
-        #if self.database_results and (self.opt['tracker'] == 'babi6'):
-        #    self.db_result = self.database_results[0]
+        template = self.templates.templates[int(action_id)]
 
         state = self.tracker.get_slots()
         if self.db_result is not None:
             for k, v in self.db_result.items():
                 state[k] = str(v)
-        # is restaurant offering
-        #if self.database_results\
-        #   and (self.opt['tracker'] == 'babi5') and (action_id == 12):
-        #        self.db_result = self.database_results.pop(0)
-        #        if self.opt['debug']:
-        #            print("API best response = ", self.db_result)
 
         return template.generate_text(state)
 

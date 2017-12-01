@@ -71,17 +71,24 @@ class HybridCodeNetworkModel(object):
                                            name='action_mask')
 
         # input projection
-        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden],
+        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden*2],
                               initializer=xavier_initializer())
-        _bi = tf.get_variable('bi', [self.n_hidden],
+        _bi = tf.get_variable('bi', [self.n_hidden*2],
                               initializer=tf.constant_initializer(0.))
 
         # add relu/tanh here if necessary
         _projected_features = tf.matmul(self._features, _Wi) + _bi
 
+        _Wi2 = tf.get_variable('Wi2', [self.n_hidden*2, self.n_hidden],
+                              initializer=xavier_initializer())
+        _bi2 = tf.get_variable('bi2', [self.n_hidden],
+                              initializer=tf.constant_initializer(0.))
+        _projected_features2 = tf.nn.relu(tf.matmul(_projected_features, _Wi2)\
+                                          + _bi2)
+
         _lstm_f = tf.contrib.rnn.LSTMCell(self.n_hidden, state_is_tuple=True)
 
-        _lstm_op, self._next_state = _lstm_f(inputs=_projected_features,
+        _lstm_op, self._next_state = _lstm_f(inputs=_projected_features2,
                                              state=(self._state_c,
                                                     self._state_h))
 
@@ -140,6 +147,13 @@ class HybridCodeNetworkModel(object):
                     self._action_mask: action_mask
                 }
             )
+        return loss_value[0], prediction
+
+    def bptt_update(self, features, action):
+        """
+        Non-truncated backpropogation through time version of update().
+        Does not support action mask.
+        """
         return loss_value[0], prediction
 
     def predict(self, features, action_mask):

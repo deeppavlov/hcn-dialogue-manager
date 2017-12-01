@@ -19,9 +19,7 @@ import json
 
 from parlai.core.dict import DictionaryAgent, Agent
 
-from .utils import normalize_text
-from .utils import is_api_answer, is_null_api_answer, iter_api_response
-from .dict import WordDictionaryAgent, ActionDictionaryAgent
+from .dict import WordDictionaryAgent
 
 
 class HCNPreprocessAgent(Agent):
@@ -30,14 +28,10 @@ class HCNPreprocessAgent(Agent):
     @staticmethod
     def add_cmdline_args(argparser):
         WordDictionaryAgent.add_cmdline_args(argparser)
-        ActionDictionaryAgent.add_cmdline_args(argparser)
         return argparser
 
     def __init__(self, opt, shared=None):
         self.id = self.__class__.__name__
-
-        # intialize action dictionary
-        self.actions = ActionDictionaryAgent(opt, shared)
 
         # word dictionary
         self.words = WordDictionaryAgent(opt, shared)
@@ -66,10 +60,6 @@ class HCNPreprocessAgent(Agent):
         self.words.observe(self.observation)
         self.words.act()
 
-        # add to action dict
-        self.actions.observe(self.observation)
-        self.actions.act()
-
         # is `intents` in observation, save slot names
         for intent in self.observation.get('intents', []):
             for slot, value in intent.get('slots', []):
@@ -82,24 +72,20 @@ class HCNPreprocessAgent(Agent):
         """Save word and action dictionaries to outer files."""
         if filename:
             self.words.save(filename + '.words', sort=sort)
-            self.actions.save(filename + '.actions', sort=sort)
             json.dump(self.slot_names, open(filename + '.slots', 'w'))
         else:
             self.words.save(sort=sort)
-            self.actions.save(sort=sort)
 
     def share(self):
         shared = {}
         shares['words'] = self.words
-        shares['actions'] = self.actions
         shared['opt'] = self.opt
         shared['class'] = type(self)
         return shared
 
     def shutdown(self):
-        """Shutdown words and actions"""
+        """Shutdown words"""
         self.words.shutdown()
-        self.actions.shutdown()
 
     def __str__(self):
-        return str(self.words) + '\n' + str(self.actions)
+        return str(self.words)

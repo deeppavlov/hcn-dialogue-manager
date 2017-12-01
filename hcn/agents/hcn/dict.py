@@ -20,26 +20,14 @@ import re
 
 from parlai.core.dict import DictionaryAgent
 
-from . import entities
-from .utils import filter_service_words, babi6_dirty_fix, normalize_text
+from .utils import filter_service_words, normalize_text
 
 
 NLP = spacy.load('en')
 
 
 class SpacyDictionaryAgent(DictionaryAgent):
-    """Override DictionaryAgent to use Spacy tokenizer and
-    use preprocessing tricks of dialog_babi5 and dialog_babi6.
-    """
-
-    @staticmethod
-    def add_cmdline_args(argparser):
-        DictionaryAgent.add_cmdline_args(argparser)
-        argparser.add_argument(
-            '--tracker', required=False, choices=['babi5', 'babi6'],
-            help='Type of entity tracker to use. Implemented only '
-                 'for dialog_babi5 and dialog_babi6.')
-        return argparser
+    """Override DictionaryAgent to use Spacy tokenizer"""
 
     def __init__(self, opt, shared):
         super().__init__(self.opt, shared)
@@ -47,10 +35,6 @@ class SpacyDictionaryAgent(DictionaryAgent):
 
     def tokenize(self, text, **kwargs):
         """Tokenize with spacy, placing service words as individual tokens."""
-        if self.opt['tracker'] == 'babi6':
-            text = babi6_dirty_fix(text)
-        text = text.replace('<SILENCE>', '_SILENCE_')
-
         return [t.text for t in NLP.tokenizer(text)]
 
     def detokenize(self, tokens):
@@ -136,74 +120,3 @@ class WordDictionaryAgent(SpacyDictionaryAgent):
             self.add_to_dict(filter_service_words(self.tokenize(text)))
         return {'id': self.getID()}
 
-
-class ActionDictionaryAgent(SpacyDictionaryAgent):
-    """Override SpacyDictionaryAgent to count actions."""
-
-    @staticmethod
-    def add_cmdline_args(argparser):
-        dictionary = argparser.add_argument_group('Action Dictionary'
-                                                  ' Arguments')
-        dictionary.add_argument(
-            '--action-file',
-            help='if set, the dictionary will automatically save to this path'
-                 ' during shutdown')
-        return dictionary
-
-    def __init__(self, opt, shared=None):
-        self.id = self.__class__.__name__
-
-        # initialize DictionaryAgent
-        self.opt = {
-            'tracker': opt.get('tracker'),
-            'dict_max_ngram_size': -1,
-            'dict_minfreq': 0,
-            'dict_nulltoken': None,
-            'dict_endtoken': None,
-            'dict_unktoken': None,
-            'dict_starttoken': None,
-            'dict_language': SpacyDictionaryAgent.default_lang
-        }
-        if opt.get('action_file') is not None:
-            self.opt['dict_file'] = opt['action_file']
-        elif opt.get('dict_file') is not None:
-            self.opt['dict_file'] = opt['dict_file'] + '.actions'
-        elif opt.get('pretrained_model') is not None:
-            self.opt['dict_file'] = opt['pretrained_model'] + '.dict.actions'
-        elif opt.get('model_file') is not None:
-            self.opt['dict_file'] = opt['model_file'] + '.dict.actions'
-        super().__init__(self.opt, shared)
-        '''if shared:
-            self.freq = shared.get('freq', {})
-            self.tok2ind = shared.get('tok2ind', {})
-            self.ind2tok = shared.get('ind2tok', {})
-        else:
-            self.freq = defaultdict(int)
-            self.tok2ind = {}
-            self.ind2tok = {}'''
-
-        # entity tracker class methods
-        self.tracker = None
-        if self.opt['tracker'] == 'babi5':
-            self.tracker = entities.Babi5EntityTracker
-        elif self.opt['tracker'] == 'babi6':
-            self.tracker = entities.Babi6EntityTracker
-
-        # properties
-        self.label_candidates = False
-
-    def get_template(self, tokens):
-        if self.tracker:
-            tokens = self.tracker.extract_entity_types(tokens)
-        return self.detokenize(tokens)
-
-    def act(self):
-        """Extract action templates from 'label_candidates' once."""
-        if not self.label_candidates:
-            self.label_candidates = True
-            for text in self.observation.get('label_candidates', ()):
-                if text:
-                    tokens = self.tokenize(text)
-                    self.add_to_dict([self.get_template(tokens)])
-
-        return {'id': self.getID()}

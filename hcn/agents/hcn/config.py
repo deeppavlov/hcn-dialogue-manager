@@ -20,16 +20,11 @@ def add_cmdline_args(parser):
     agent = parser.add_argument_group('HCN Arguments')
     agent.add_argument('--no-cuda', type='bool', default=False)
     agent.add_argument('--gpu', type=int, default=-1)
-    agent.add_argument('--random_seed', type=int, default=123098)
 
     # Basics
     agent.add_argument('--pretrained-model', type=str, default=None,
                        help='Load dict/features/weights/opts/database from '
                        'the file prefix')
-    agent.add_argument('--log-file', type=str, default=None)
-# agent.add_argument('--tracker', required=True, choices=['babi5', 'babi6'],
-#                   help='Type of entity tracker to use. Implemented only '
-#                   'for dialog_babi5 and dialog_babi6.')
 
     # Dictionaries configuration
     agent.add_argument('--slot-model', type=str, default=None,
@@ -38,7 +33,7 @@ def add_cmdline_args(parser):
                         help='Fasttext pretrained model')
     agent.add_argument('--embedding-file', type=str, default=None,
                         help='List of used word embeddings: w e1 .. ed.')
-    agent.add_argument('--template-file', type=str, default=None,
+    agent.add_argument('--template-file', type=str, required=True,
                        help='File with dataset templates if present.')
     agent.add_argument('--template-path-relative', type=bool, default=False,
                        help='Template path is relative to parlai data.')
