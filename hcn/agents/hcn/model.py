@@ -61,6 +61,8 @@ class HybridCodeNetworkModel(object):
         # entry points
         self._features = tf.placeholder(tf.float32, [1, self.obs_size],
                                         name='features')
+        self._prev_action = tf.placeholder(tf.float32, [1, self.n_actions],
+                                        name='prev_action')
         self._state_c = tf.placeholder(tf.float32, [1, self.n_hidden],
                                        name='state_c')
         self._state_h = tf.placeholder(tf.float32, [1, self.n_hidden],
@@ -70,40 +72,14 @@ class HybridCodeNetworkModel(object):
         self._action_mask = tf.placeholder(tf.float32, [self.n_actions],
                                            name='action_mask')
 
-        # input projection
-        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden],
-                              initializer=xavier_initializer())
-        _bi = tf.get_variable('bi', [self.n_hidden],
-                              initializer=tf.constant_initializer(0.))
-
-        # add relu/tanh here if necessary
-        _projected_features = tf.matmul(self._features, _Wi) + _bi
-
-        _lstm_f = tf.contrib.rnn.LSTMCell(self.n_hidden, state_is_tuple=True)
-
-        _lstm_op, self._next_state = _lstm_f(inputs=_projected_features,
-                                             state=(self._state_c,
-                                                    self._state_h))
-
-        # reshape LSTM's state tuple (2,128) -> (1,256)
-        _state_reshaped = tf.concat(axis=1,
-                                    values=(self._next_state.c,
-                                            self._next_state.h))
-
-        # output projection
-        _Wo = tf.get_variable('Wo', [2*self.n_hidden, self.n_actions],
-                              initializer=xavier_initializer())
-        _bo = tf.get_variable('bo', [self.n_actions],
-                              initializer=tf.constant_initializer(0.))
-        # get logits
-        _logits = tf.matmul(_state_reshaped, _Wo) + _bo
-
-        # probabilities normalization : elemwise multiply with action mask
-        self._probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)),
-                                  self._action_mask)
-
+        # body
+        self._next_state, _logits, self._probs = \
+                self.__build_body__(
+                    self._prev_action, self._features, self._state_c, self.state_h
+                )
         self._prediction = tf.argmax(self._probs, axis=0)
 
+        # operations
         self._loss = tf.nn.sparse_softmax_cross_entropy_with_logits(
             logits=_logits, labels=self._action)
 
@@ -119,6 +95,47 @@ class HybridCodeNetworkModel(object):
         tf.add_to_collection('loss', self._loss)
         tf.add_to_collection('global_step', self._step)
         tf.add_to_collection('train_op', self._train_op)
+
+    def __build_body__(self, prev_action, features, state_c, state_h):
+        # input projection
+        _Wi = tf.get_variable('Wi', [self.obs_size, self.n_hidden*2],
+                              initializer=xavier_initializer())
+        _bi = tf.get_variable('bi', [self.n_hidden*2],
+                              initializer=tf.constant_initializer(0.))
+
+        # add relu/tanh here if necessary
+        _projected_features = tf.matmul(self._features, _Wi) + _bi
+
+        _Wi2 = tf.get_variable('Wi2', [self.n_hidden*2, self.n_hidden],
+                              initializer=xavier_initializer())
+        _bi2 = tf.get_variable('bi2', [self.n_hidden],
+                              initializer=tf.constant_initializer(0.))
+        _projected_features2 = tf.nn.tanh(tf.matmul(_projected_features, _Wi2)\
+                                          + _bi2)
+        #_projected_features2 = tf.nn.relu(tf.matmul(_projected_features, _Wi2)\
+        #                                  + _bi2)
+
+        _lstm_f = tf.contrib.rnn.LSTMCell(self.n_hidden, state_is_tuple=True)
+
+        _lstm_op, _next_state = _lstm_f(inputs=_projected_features2,
+                                        state=(state_c, state_h))
+
+        # reshape LSTM's state tuple (2,128) -> (1,256)
+        _state_reshaped = tf.concat(axis=1,
+                                    values=(_next_state.c, _next_state.h))
+
+        # output projection
+        _Wo = tf.get_variable('Wo', [2*self.n_hidden, self.n_actions],
+                              initializer=xavier_initializer())
+        _bo = tf.get_variable('bo', [self.n_actions],
+                              initializer=tf.constant_initializer(0.))
+        # get logits
+        _logits = tf.matmul(_state_reshaped, _Wo) + _bo
+
+        # probabilities normalization : elemwise multiply with action mask
+        _probs = tf.multiply(tf.squeeze(tf.nn.softmax(_logits)),
+                                  self._action_mask)
+        return _next_state, _logits, _probs
 
     def reset_state(self):
         # set zero state
@@ -140,6 +157,16 @@ class HybridCodeNetworkModel(object):
                     self._action_mask: action_mask
                 }
             )
+        return loss_value[0], prediction
+
+    def bptt_update(self, diag_features, action):
+        """
+        Non-truncated backpropogation through time version of update().
+        Does not support action mask.
+        """
+        _num_turns = tf.constant(len(diag_features))
+        _cond = lambda nt, feats: nt > 0
+        _train_op = lambda nt, feats: (tf.add(nt, -1), feats[1:])
         return loss_value[0], prediction
 
     def predict(self, features, action_mask):
